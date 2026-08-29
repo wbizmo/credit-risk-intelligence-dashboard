@@ -54,7 +54,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     requestTimeout: 10_000,
     connectionTimeout: 10_000,
     keepAliveTimeout: 72_000,
-    maxParamLength: 256,
+    routerOptions: { maxParamLength: 256 },
   });
 
   await app.register(helmet, { contentSecurityPolicy: false });
