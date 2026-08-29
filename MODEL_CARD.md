@@ -1,63 +1,95 @@
 # Model Card — CRIX-MonoBoost 1.0
 
+## System context
+
+CRIX API release: **v2.5.0**  
+Bundled model: **CRIX-MonoBoost 1.0.0**
+
+The API version and the model version are intentionally independent. v2.5 substantially changes service architecture, validation, governance surfaces and runtime hardening without pretending the underlying trained artifact was retrained.
+
 ## Intended use
 
-Educational and portfolio demonstration of credit-risk modelling and decision-system engineering. It estimates a synthetic 12-month probability of default (PD) and supports portfolio analytics, model diagnostics and stress testing.
+CRIX-MonoBoost is an engineering/model-risk demonstration for showing how a credit-risk model can be calibrated, challenged, explained, stress-tested and exposed through a governed API contract.
 
-**It is not validated or authorized for real lending decisions.**
+It is **not approved for real lending decisions**.
 
-## Model family
+## Target
 
-Champion: shallow gradient-boosted decision trees trained with monotonic constraints. Monotonicity encodes directional credit-risk priors where appropriate, such as higher debt-to-income, utilization, delinquency burden and recent credit growth not decreasing predicted risk.
+The model estimates a synthetic **12-month probability of default (PD)**.
 
-Challenger: compact logistic risk model with a smaller transparent feature set. Champion/challenger disagreement contributes to the confidence signal and can trigger manual review.
+## Features
 
-## Development population
+- debt-to-income ratio;
+- revolving utilization;
+- delinquencies in the last 24 months;
+- recent credit inquiries;
+- age of oldest trade;
+- open account count;
+- requested loan / annual income;
+- employment tenure;
+- liquidity buffer in months;
+- on-time payment rate;
+- income stability;
+- recent credit growth.
 
-50,000 deterministic synthetic records generated from correlated consumer-credit-style distributions. The latent default function includes nonlinear interactions and stochastic noise. The split is stratified into development, calibration and held-out test populations.
+The HTTP API intentionally does not request borrower names. Identity is not a model feature.
 
-The synthetic generator exists to make the project reproducible and privacy-safe. It is not a substitute for representative observed performance data.
+## Training and validation
 
-## Current held-out metrics
+The artifact is trained on 50,000 deterministic synthetic credit-performance records. Training, calibration and held-out test populations are separated. Monotonic constraints encode domain-informed directionality on selected features. A separate logistic calibration layer maps champion margins into probabilities.
 
-- ROC-AUC: 0.7334
-- KS: 0.3405
-- Brier score: 0.1024
-- Log loss: 0.3452
-- Test records: 10,000
-- Test default rate: 13.09%
+Held-out snapshot:
 
-These values are intentionally reported as validation diagnostics rather than being optimized to look impressive. Model usefulness depends on discrimination, calibration, stability, decision economics and governance together.
+| Metric | Value |
+|---|---:|
+| ROC-AUC | 0.7334 |
+| KS | 0.3405 |
+| Brier score | 0.1024 |
+| Log loss | 0.3452 |
+| Test observations | 10,000 |
+| Test default rate | 13.09% |
 
-## Probability calibration
+## Challenger
 
-The XGBoost raw margin is mapped to PD using a logistic (Platt) calibrator fit on data not used to fit the champion. The dashboard includes a reliability view of predicted versus observed default rates across probability buckets.
+Every application is also evaluated by a transparent logistic challenger. The absolute champion/challenger PD difference is surfaced as `disagreement`. Material disagreement lowers confidence and emits a model-risk flag.
 
 ## Explainability
 
-The deployed application produces model-agnostic local sensitivity reason codes. Each input feature is replaced with a reference-development value, the application is re-scored, and the PD delta is reported. This is explicitly labelled sensitivity attribution and is not misrepresented as exact SHAP.
+The API returns local reason codes derived from counterfactual sensitivity to a stable reference vector. These are useful for engineering/model-analysis demonstration; they are **not represented as legally sufficient adverse-action reasons**.
 
-The training stack includes SHAP for deeper offline analysis and OptBinning for scorecard experimentation.
+## Out-of-distribution handling
 
-## Score mapping
+The API accepts a broad but bounded validation domain. Separately, the engine compares selected values with the synthetic training support. Inputs outside that support are returned through `outOfDistribution`, confidence is reduced, and `OUT_OF_DISTRIBUTION` is added to model-risk flags.
 
-The displayed 300–850 CRIX score is derived from calibrated PD using odds scaling with 20 points to double good:bad odds around a 600-point / 20:1 reference. The score is presentation-friendly; PD remains the primary model output.
+This is intentional: schema-valid does not mean model-trustworthy.
 
 ## Expected loss
 
+CRIX derives:
+
 `Expected Loss = PD × LGD × EAD`
 
-LGD in the demo is a bounded severity function of leverage, income stability and liquidity. EAD is the requested funded amount. A real implementation would use segment-specific validated LGD/EAD models.
+LGD in this repository is a deterministic engineering approximation based on leverage, income stability and liquidity buffer. EAD is the requested loan amount. Neither should be treated as an institutionally validated production estimate.
 
-## Key limitations
+## Decision policy
 
-- synthetic development data;
-- no protected-class fairness conclusions can be drawn;
-- no bureau-specific variables or macroeconomic time series are included;
-- no reject inference or sample-selection correction;
-- no vintage analysis or observed backtesting exists yet;
-- stress scenarios are sensitivity shocks, not economic forecasts.
+The model does not directly approve or decline applications. `CRIX-Policy 2.5` is a separate deterministic layer with explicit PD, DTI, delinquency, loan-to-income and confidence thresholds.
 
-## Production gates before real use
+## Stress testing
 
-Representative historical data, data lineage, feature definitions, legal/compliance review, fairness testing, independent validation, calibration by segment, reject-inference assessment, drift thresholds, model registry/approval workflow, production monitoring, adverse-action reason governance and periodic backtesting would all be required.
+The API supports deterministic `mild` and `severe` shocks that reduce income/liquidity/stability and increase leverage/utilization/credit growth, then re-run the full model and policy lifecycle.
+
+## Production gates
+
+Before any real credit use, at minimum:
+
+1. train on representative historical performance data with point-in-time feature correctness;
+2. document target/default definitions and observation/performance windows;
+3. independently validate discrimination, calibration, stability and reason-code behaviour;
+4. test fairness and prohibited/proxy-variable risks with legal/compliance review;
+5. establish model registry, approvals, signed/versioned artifacts and controlled promotion;
+6. monitor drift, calibration, overrides, decision rates, complaints and performance;
+7. validate LGD/EAD separately;
+8. govern policy and pricing independently from model development;
+9. implement auditable adverse-action processes appropriate to applicable law;
+10. add production authentication, authorization, audit retention and operational controls.
