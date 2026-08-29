@@ -40,8 +40,16 @@ describe("credit risk engine", () => {
     expect(high).toBeGreaterThanOrEqual(low);
   });
 
-  it("emits a complete underwriting result", () => {
-    const result = assessRisk(baseline);
+  it("emits a complete underwriting result with explanations away from the reference profile", () => {
+    const result = assessRisk({
+      ...baseline,
+      debtToIncome: 0.46,
+      creditUtilization: 0.68,
+      delinquencies24m: 1,
+      inquiries6m: 3,
+      loanAmount: 42000,
+      recentCreditGrowth: 0.31,
+    });
     expect(result.score).toBeGreaterThanOrEqual(300);
     expect(result.score).toBeLessThanOrEqual(850);
     expect(["APPROVE", "REVIEW", "DECLINE"]).toContain(result.decision);
