@@ -42,21 +42,42 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
-  it("publishes a valid OpenAPI document and Swagger UI", async () => {
+  it("publishes non-cacheable valid OpenAPI through public, legacy and canonical Swagger endpoints", async () => {
     const app = await buildApp(config());
-    const response = await app.inject({ method: "GET", url: "/openapi.json" });
-    expect(response.statusCode).toBe(200);
-    const spec = response.json();
-    expect(spec.openapi).toBe("3.0.3");
-    expect(spec.info.version).toBe("2.5.0");
-    expect(spec.paths["/api/v2/risk/score"]).toBeTruthy();
-    expect(spec.paths["/api/v2/risk/stress"]).toBeTruthy();
-    expect(spec.paths["/api/v2/risk/batch"]).toBeTruthy();
 
-    const docs = await app.inject({ method: "GET", url: "/docs/" });
+    const publicSpecResponse = await app.inject({ method: "GET", url: "/openapi.json" });
+    expect(publicSpecResponse.statusCode).toBe(200);
+    expect(publicSpecResponse.headers["cache-control"]).toContain("no-store");
+    const publicSpec = publicSpecResponse.json();
+    expect(publicSpec.openapi).toBe("3.0.3");
+    expect(publicSpec.info.version).toBe("2.5.0");
+    expect(publicSpec.paths["/api/v2/risk/score"]).toBeTruthy();
+    expect(publicSpec.paths["/api/v2/risk/stress"]).toBeTruthy();
+    expect(publicSpec.paths["/api/v2/risk/batch"]).toBeTruthy();
+
+    const legacySpecResponse = await app.inject({ method: "GET", url: "/docs/json" });
+    expect(legacySpecResponse.statusCode).toBe(200);
+    expect(legacySpecResponse.headers["cache-control"]).toContain("no-store");
+    expect(legacySpecResponse.json().openapi).toBe("3.0.3");
+
+    const legacyDocs = await app.inject({ method: "GET", url: "/docs/" });
+    expect(legacyDocs.statusCode).toBe(302);
+    expect(legacyDocs.headers.location).toBe("/docs/ui/");
+    expect(legacyDocs.headers["cache-control"]).toContain("no-store");
+
+    const docs = await app.inject({ method: "GET", url: "/docs/ui/" });
     expect(docs.statusCode).toBe(200);
     expect(docs.headers["content-type"]).toContain("text/html");
+    expect(docs.headers["cache-control"]).toContain("no-store");
     expect(docs.body.toLowerCase()).toContain("swagger ui");
+
+    const swaggerSpecResponse = await app.inject({ method: "GET", url: "/docs/ui/json" });
+    expect(swaggerSpecResponse.statusCode).toBe(200);
+    expect(swaggerSpecResponse.headers["cache-control"]).toContain("no-store");
+    const swaggerSpec = swaggerSpecResponse.json();
+    expect(swaggerSpec.openapi).toBe("3.0.3");
+    expect(swaggerSpec.info.version).toBe("2.5.0");
+    expect(swaggerSpec.paths["/api/v2/risk/score"]).toBeTruthy();
     await app.close();
   });
 

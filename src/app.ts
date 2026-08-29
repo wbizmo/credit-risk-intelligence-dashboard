@@ -4,7 +4,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { loadConfig, type AppConfig } from "./config";
 import { assessRisk, modelMetadata, stressApplication, verifyModelIntegrity } from "./risk/engine";
 import type { ApplicationInput, StressSeverity } from "./risk/types";
@@ -23,6 +23,9 @@ import {
   stressResponseSchema,
 } from "./schemas";
 
+const OPENAPI_VERSION = "3.0.3";
+const SWAGGER_UI_PREFIX = "/docs/ui";
+
 const secureEqual = (actual: string, expected: string): boolean => {
   const a = Buffer.from(actual);
   const b = Buffer.from(expected);
@@ -30,6 +33,13 @@ const secureEqual = (actual: string, expected: string): boolean => {
 };
 
 const protectedRoute = (request: FastifyRequest) => request.url === API_MAJOR_PATH || request.url.startsWith(`${API_MAJOR_PATH}/`);
+
+const setNoStoreHeaders = (reply: FastifyReply): void => {
+  reply.header("cache-control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0");
+  reply.header("pragma", "no-cache");
+  reply.header("expires", "0");
+  reply.header("surrogate-control", "no-store");
+};
 
 interface ValidationIssue {
   instancePath?: string;
@@ -79,7 +89,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
 
   await app.register(swagger, {
     openapi: {
-      openapi: "3.0.3",
+      openapi: OPENAPI_VERSION,
       info: {
         title: "CRIX Credit Risk Intelligence API",
         version: API_VERSION,
@@ -99,9 +109,18 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   });
 
   await app.register(swaggerUi, {
-    routePrefix: "/docs",
+    routePrefix: SWAGGER_UI_PREFIX,
     staticCSP: true,
     uiConfig: { docExpansion: "list", deepLinking: true },
+    uiHooks: {
+      onRequest: async (_request, reply) => {
+        setNoStoreHeaders(reply);
+      },
+    },
+    transformSpecification: (swaggerObject) => ({
+      ...swaggerObject,
+      openapi: OPENAPI_VERSION,
+    }),
   });
 
   const modelReady = verifyModelIntegrity();
@@ -119,6 +138,28 @@ export async function buildApp(config: AppConfig = loadConfig()) {
         requestId: request.id,
       });
     }
+  });
+
+  const currentOpenApiDocument = () => ({ ...app.swagger(), openapi: OPENAPI_VERSION });
+
+  const redirectToSwagger = async (_request: FastifyRequest, reply: FastifyReply) => {
+    setNoStoreHeaders(reply);
+    return reply.redirect(`${SWAGGER_UI_PREFIX}/`);
+  };
+
+  app.get("/docs", {
+    schema: { hide: true },
+  }, redirectToSwagger);
+
+  app.get("/docs/", {
+    schema: { hide: true },
+  }, redirectToSwagger);
+
+  app.get("/docs/json", {
+    schema: { hide: true },
+  }, async (_request, reply) => {
+    setNoStoreHeaders(reply);
+    return currentOpenApiDocument();
   });
 
   app.get("/", {
@@ -158,7 +199,10 @@ export async function buildApp(config: AppConfig = loadConfig()) {
 
   app.get("/openapi.json", {
     schema: { tags: ["System"], summary: "OpenAPI document" },
-  }, async () => app.swagger());
+  }, async (_request, reply) => {
+    setNoStoreHeaders(reply);
+    return currentOpenApiDocument();
+  });
 
   app.get(`${API_MAJOR_PATH}/model`, {
     schema: {
