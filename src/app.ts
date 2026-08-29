@@ -13,9 +13,14 @@ import {
   API_VERSION,
   applicationSchema,
   batchRequestSchema,
+  batchResponseSchema,
   errorSchema,
+  healthResponseSchema,
+  modelResponseSchema,
+  readyResponseSchema,
   scoreResponseSchema,
   stressRequestSchema,
+  stressResponseSchema,
 } from "./schemas";
 
 const secureEqual = (actual: string, expected: string): boolean => {
@@ -121,7 +126,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
 
   app.get("/health", {
     config: { rateLimit: { max: 600, timeWindow: "1 minute" } },
-    schema: { tags: ["System"], summary: "Liveness probe" },
+    schema: { tags: ["System"], summary: "Liveness probe", response: { 200: healthResponseSchema } },
   }, async () => ({
     status: "ok",
     service: "crix-credit-risk-intelligence-api",
@@ -132,7 +137,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
 
   app.get("/ready", {
     config: { rateLimit: { max: 600, timeWindow: "1 minute" } },
-    schema: { tags: ["System"], summary: "Readiness probe" },
+    schema: { tags: ["System"], summary: "Readiness probe", response: { 200: readyResponseSchema, 503: readyResponseSchema } },
   }, async (_request, reply) => {
     if (!modelReady) return reply.code(503).send({ status: "not-ready", modelLoaded: false, version: API_VERSION });
     return { status: "ready", modelLoaded: true, version: API_VERSION, model: modelMetadata().name };
@@ -147,7 +152,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
       tags: ["Model"],
       summary: "Model and policy metadata",
       description: "Returns model version, calibration, held-out validation metrics, feature metadata, diagnostics and current policy thresholds. Tree internals are intentionally not returned by the API.",
-      response: { 401: errorSchema, 429: errorSchema },
+      response: { 200: modelResponseSchema, 401: errorSchema, 429: errorSchema },
     },
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...modelMetadata() }));
 
@@ -169,7 +174,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
       summary: "Stress-test an application",
       description: "Applies a deterministic mild or severe borrower shock and re-runs the complete model + policy lifecycle.",
       body: stressRequestSchema,
-      response: { 400: errorSchema, 401: errorSchema, 429: errorSchema },
+      response: { 200: stressResponseSchema, 400: errorSchema, 401: errorSchema, 429: errorSchema },
     },
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...stressApplication(request.body.application, request.body.severity) }));
 
@@ -180,7 +185,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
       summary: "Score a bounded batch",
       description: "Scores up to 50 applications synchronously. The hard batch bound protects CPU/memory on the public demo deployment.",
       body: batchRequestSchema,
-      response: { 400: errorSchema, 401: errorSchema, 429: errorSchema },
+      response: { 200: batchResponseSchema, 400: errorSchema, 401: errorSchema, 429: errorSchema },
     },
   }, async (request) => {
     const results = request.body.applications.map((application, index) => ({

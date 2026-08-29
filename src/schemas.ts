@@ -82,6 +82,31 @@ export const errorSchema = {
   }
 } as const;
 
+export const healthResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status", "service", "version", "uptimeSeconds", "timestamp"],
+  properties: {
+    status: { type: "string", enum: ["ok"] },
+    service: { type: "string" },
+    version: { type: "string" },
+    uptimeSeconds: { type: "integer", minimum: 0 },
+    timestamp: { type: "string", format: "date-time" }
+  }
+} as const;
+
+export const readyResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status", "modelLoaded", "version"],
+  properties: {
+    status: { type: "string", enum: ["ready", "not-ready"] },
+    modelLoaded: { type: "boolean" },
+    version: { type: "string" },
+    model: { type: "string" }
+  }
+} as const;
+
 export const scoreResponseSchema = {
   type: "object",
   additionalProperties: false,
@@ -103,11 +128,141 @@ export const stressRequestSchema = {
   }
 } as const;
 
+export const stressResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["requestId", "apiVersion", "severity", "input", "baseline", "stressed", "delta"],
+  properties: {
+    requestId: { type: "string" },
+    apiVersion: { type: "string" },
+    severity: { type: "string", enum: ["mild", "severe"] },
+    input: applicationSchema,
+    baseline: riskResultSchema,
+    stressed: riskResultSchema,
+    delta: {
+      type: "object",
+      additionalProperties: false,
+      required: ["pd", "expectedLoss", "score", "decisionChanged"],
+      properties: {
+        pd: { type: "number" },
+        expectedLoss: { type: "number" },
+        score: { type: "integer" },
+        decisionChanged: { type: "boolean" }
+      }
+    }
+  }
+} as const;
+
 export const batchRequestSchema = {
   type: "object",
   additionalProperties: false,
   required: ["applications"],
   properties: {
     applications: { type: "array", minItems: 1, maxItems: MAX_BATCH_SIZE, items: applicationSchema }
+  }
+} as const;
+
+export const batchResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["requestId", "apiVersion", "results", "summary"],
+  properties: {
+    requestId: { type: "string" },
+    apiVersion: { type: "string" },
+    results: {
+      type: "array",
+      maxItems: MAX_BATCH_SIZE,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["index", "result"],
+        properties: {
+          index: { type: "integer", minimum: 0 },
+          applicationId: { type: "string" },
+          result: riskResultSchema
+        }
+      }
+    },
+    summary: {
+      type: "object",
+      additionalProperties: false,
+      required: ["count", "decisions", "averagePd", "totalExpectedLoss"],
+      properties: {
+        count: { type: "integer", minimum: 1, maximum: MAX_BATCH_SIZE },
+        decisions: {
+          type: "object",
+          additionalProperties: false,
+          required: ["APPROVE", "REVIEW", "DECLINE"],
+          properties: {
+            APPROVE: { type: "integer", minimum: 0 },
+            REVIEW: { type: "integer", minimum: 0 },
+            DECLINE: { type: "integer", minimum: 0 }
+          }
+        },
+        averagePd: { type: "number", minimum: 0, maximum: 1 },
+        totalExpectedLoss: { type: "number", minimum: 0 }
+      }
+    }
+  }
+} as const;
+
+export const modelResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["requestId", "apiVersion", "name", "version", "trainedAt", "features", "monotoneConstraints", "calibration", "metrics", "diagnostics", "treeCount", "policy"],
+  properties: {
+    requestId: { type: "string" },
+    apiVersion: { type: "string" },
+    name: { type: "string" },
+    version: { type: "string" },
+    trainedAt: { type: "string" },
+    features: { type: "array", items: { type: "string" } },
+    monotoneConstraints: { type: "array", items: { type: "integer" } },
+    calibration: {
+      type: "object",
+      additionalProperties: false,
+      required: ["slope", "intercept"],
+      properties: { slope: { type: "number" }, intercept: { type: "number" } }
+    },
+    metrics: {
+      type: "object",
+      additionalProperties: { type: "number" }
+    },
+    diagnostics: {
+      type: "object",
+      additionalProperties: false,
+      required: ["calibration", "roc", "featureImportance"],
+      properties: {
+        calibration: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["predicted", "observed", "count"],
+            properties: { predicted: { type: "number" }, observed: { type: "number" }, count: { type: "integer" } }
+          }
+        },
+        roc: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["fpr", "tpr"],
+            properties: { fpr: { type: "number" }, tpr: { type: "number" } }
+          }
+        },
+        featureImportance: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["feature", "gain"],
+            properties: { feature: { type: "string" }, gain: { type: "number" } }
+          }
+        }
+      }
+    },
+    treeCount: { type: "integer", minimum: 1 },
+    policy: { type: "object", additionalProperties: true }
   }
 } as const;
