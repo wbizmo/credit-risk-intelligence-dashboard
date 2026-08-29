@@ -42,11 +42,12 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
-  it("publishes valid OpenAPI through both public and Swagger UI spec endpoints", async () => {
+  it("publishes non-cacheable valid OpenAPI through the public and Swagger UI spec endpoints", async () => {
     const app = await buildApp(config());
 
     const publicSpecResponse = await app.inject({ method: "GET", url: "/openapi.json" });
     expect(publicSpecResponse.statusCode).toBe(200);
+    expect(publicSpecResponse.headers["cache-control"]).toContain("no-store");
     const publicSpec = publicSpecResponse.json();
     expect(publicSpec.openapi).toBe("3.0.3");
     expect(publicSpec.info.version).toBe("2.5.0");
@@ -54,17 +55,24 @@ describe("CRIX HTTP API", () => {
     expect(publicSpec.paths["/api/v2/risk/stress"]).toBeTruthy();
     expect(publicSpec.paths["/api/v2/risk/batch"]).toBeTruthy();
 
-    const swaggerSpecResponse = await app.inject({ method: "GET", url: "/docs/json" });
+    const legacyDocs = await app.inject({ method: "GET", url: "/docs/" });
+    expect(legacyDocs.statusCode).toBe(302);
+    expect(legacyDocs.headers.location).toBe("/docs/ui/");
+    expect(legacyDocs.headers["cache-control"]).toContain("no-store");
+
+    const docs = await app.inject({ method: "GET", url: "/docs/ui/" });
+    expect(docs.statusCode).toBe(200);
+    expect(docs.headers["content-type"]).toContain("text/html");
+    expect(docs.headers["cache-control"]).toContain("no-store");
+    expect(docs.body.toLowerCase()).toContain("swagger ui");
+
+    const swaggerSpecResponse = await app.inject({ method: "GET", url: "/docs/ui/json" });
     expect(swaggerSpecResponse.statusCode).toBe(200);
+    expect(swaggerSpecResponse.headers["cache-control"]).toContain("no-store");
     const swaggerSpec = swaggerSpecResponse.json();
     expect(swaggerSpec.openapi).toBe("3.0.3");
     expect(swaggerSpec.info.version).toBe("2.5.0");
     expect(swaggerSpec.paths["/api/v2/risk/score"]).toBeTruthy();
-
-    const docs = await app.inject({ method: "GET", url: "/docs/" });
-    expect(docs.statusCode).toBe(200);
-    expect(docs.headers["content-type"]).toContain("text/html");
-    expect(docs.body.toLowerCase()).toContain("swagger ui");
     await app.close();
   });
 
