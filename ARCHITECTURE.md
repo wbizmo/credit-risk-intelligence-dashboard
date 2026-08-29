@@ -1,64 +1,90 @@
-# CRIX Architecture
+# CRIX v2.5 Architecture
 
-## Design goal
+CRIX is intentionally a **stateless backend API**. The model is the core product; HTTP is the delivery mechanism.
 
-CRIX is an algorithm-first credit-risk laboratory. The public deployment must remain runnable without a database, queue, Python service, cloud account, or paid AI API while the repository still demonstrates a credible model-development lifecycle.
-
-## Runtime
+## Runtime boundaries
 
 ```text
-Browser
-  └─ Next.js / React dashboard
-       ├─ TypeScript XGBoost tree evaluator
-       │    └─ versioned model-artifact.json
-       ├─ transparent logistic challenger
-       ├─ underwriting policy engine
-       ├─ local sensitivity explanations
-       ├─ PD / LGD / EAD / EL calculations
-       └─ deterministic portfolio + stress engine
+Client
+  |
+  v
+Fastify API
+  |-- health/readiness
+  |-- OpenAPI/Swagger
+  |-- schema validation
+  |-- rate limiting
+  |-- optional API-key auth
+  |-- request/error controls
+  |
+  v
+Risk Engine
+  |-- champion PD
+  |-- challenger PD
+  |-- disagreement/confidence
+  |-- OOD detection
+  |-- LGD/EAD/expected loss
+  |-- score/grade
+  |-- local reason codes
+  |-- policy decision
+  |-- stress scenarios
+  |
+  v
+Versioned model artifact
 ```
 
-Inference is deterministic and local. The model artifact contains only tree structure, a calibration transform, development references and validation diagnostics. No borrower data is persisted.
+There is no database, Redis instance, queue, browser application, or external inference dependency in the live system.
 
-## Offline model development
+## Offline model-development boundary
 
-```text
-Synthetic or licensed credit-performance data
-  → validation + feature engineering
-  → train / calibration / test split
-  → monotonic XGBoost champion
-  → probability calibration
-  → interpretable scorecard challenger
-  → discrimination + calibration diagnostics
-  → artifact export
-  → browser parity tests
-```
+Python is an offline build-time/research concern only. `model/train.py` generates deterministic synthetic performance data, trains the constrained champion, calibrates it on a separate split, calculates held-out diagnostics, and exports a compact JSON artifact.
 
-The Python training environment is deliberately not part of the Vercel runtime.
+The live TypeScript service evaluates that artifact directly. This means runtime availability is not coupled to a Python process or ML service.
 
-## Separation of concerns
+## Model / policy separation
 
-1. **Risk model** estimates 12-month probability of default.
-2. **Severity model** estimates loss given default for the demonstration exposure.
-3. **Exposure layer** determines exposure at default.
-4. **Economics layer** computes expected loss and indicative risk pricing.
-5. **Policy layer** maps model outputs plus guardrails to APPROVE / REVIEW / DECLINE.
-6. **Governance layer** exposes challenger disagreement, OOD warnings, diagnostics and reason codes.
+The champion and challenger estimate risk. They do not decide approval by themselves.
 
-The decision policy never changes the model's probability. This allows risk appetite to evolve independently of model retraining.
+The policy layer consumes PD plus selected application and confidence signals and returns `APPROVE`, `REVIEW`, or `DECLINE`. Keeping policy separate allows model changes, risk-appetite changes, and pricing changes to be governed independently.
 
-## Why no database
+## Request lifecycle
 
-A database would add no value to the portfolio demonstration and would make a public deployment harder to reproduce. The dashboard generates a deterministic synthetic portfolio in memory and never claims persistence. A production lender could attach an event store and feature platform behind the same `ApplicationInput → RiskResult` contract later.
+1. Fastify assigns an opaque UUID request ID.
+2. Global request/body/time limits apply.
+3. Optional API-key authentication runs for `/api/v2/*`.
+4. AJV validates the body against strict JSON Schema.
+5. The engine performs its own finite-number checks as a second trust boundary.
+6. The champion tree ensemble produces a raw margin.
+7. Held-out calibration converts margin to PD.
+8. The transparent challenger scores the same vector.
+9. Disagreement and OOD checks reduce confidence and emit flags.
+10. LGD, EAD, expected loss, score, grade, pricing and reason codes are derived.
+11. Independent policy decides approve/review/decline.
+12. The response includes request, model and policy versions for traceability.
 
-## Security and privacy posture
+## Availability and readiness
 
-- no credentials or secrets are required;
-- no PII is sent to a backend;
-- no telemetry is required for the scoring engine;
-- no model-training data is bundled except the deterministic synthetic generator;
-- no external model endpoint can silently change behaviour.
+`/health` is a liveness probe. It answers without performing model work.
 
-## Extension points
+`/ready` reflects a startup model-integrity check. The server verifies artifact structure and executes a sentinel score before advertising readiness. With no external stateful dependencies, the model artifact is the primary runtime readiness dependency.
 
-The contract is intentionally ready for later replacement of the local artifact with an API, ONNX Runtime, a feature store, model registry, adverse-action service, streaming portfolio monitor or persistent underwriting ledger without rewriting the dashboard domain model.
+## Security model
+
+The public demo defaults to no API key so reviewers can exercise Swagger immediately. A deployment can set `CRIX_API_KEY` to protect `/api/v2/*`; health/readiness/docs remain available for operations and discovery.
+
+Controls include request-size limits, rate limits, strict schemas, CORS allow-listing, Helmet, sensitive-header log redaction, constant-time API-key comparison, sanitized errors, batch bounds, and no application persistence.
+
+## Scaling path
+
+The synchronous API is deliberately bounded. A real high-volume deployment would likely add:
+
+- gateway-level authentication and quotas;
+- async bulk scoring behind a queue;
+- immutable request/result audit storage;
+- model registry and signed artifacts;
+- feature service with point-in-time correctness;
+- independent policy configuration/versioning;
+- telemetry for drift, calibration, decision rates and latency;
+- canary/champion-challenger routing;
+- formal adverse-action reason governance.
+
+Those concerns are not simulated with unnecessary infrastructure in this repository. The v2.5 runtime stays small enough to inspect and reproduce while making its production extension points explicit.

@@ -1,7 +1,8 @@
 export type Decision = "APPROVE" | "REVIEW" | "DECLINE";
+export type StressSeverity = "mild" | "severe";
 
 export interface ApplicationInput {
-  borrowerName: string;
+  applicationId?: string;
   annualIncome: number;
   debtToIncome: number;
   creditUtilization: number;
@@ -32,6 +33,7 @@ export interface RiskResult {
   lgd: number;
   ead: number;
   expectedLoss: number;
+  expectedLossRate: number;
   score: number;
   grade: string;
   decision: Decision;
@@ -39,9 +41,20 @@ export interface RiskResult {
   apr: number;
   reasons: ReasonCode[];
   modelVersion: string;
+  policyVersion: string;
   outOfDistribution: string[];
+  flags: string[];
 }
 
-export interface PortfolioRecord extends ApplicationInput, RiskResult {
-  id: string;
+export interface StressResult {
+  severity: StressSeverity;
+  input: ApplicationInput;
+  baseline: RiskResult;
+  stressed: RiskResult;
+  delta: {
+    pd: number;
+    expectedLoss: number;
+    score: number;
+    decisionChanged: boolean;
+  };
 }

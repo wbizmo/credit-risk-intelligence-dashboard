@@ -1,12 +1,10 @@
 node_modules/
-.next/
-out/
+dist/
 coverage/
-.env*
+.env
+.env.*
 !.env.example
-.DS_Store
 *.log
+.DS_Store
 model/.venv/
-model/__pycache__/
-data/raw/*
-!data/raw/.gitkeep
+model/raw.json
