@@ -79,6 +79,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
 
   await app.register(swagger, {
     openapi: {
+      openapi: "3.0.3",
       info: {
         title: "CRIX Credit Risk Intelligence API",
         version: API_VERSION,
