@@ -42,15 +42,21 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
-  it("publishes Swagger/OpenAPI for the scoring endpoints", async () => {
+  it("publishes a valid OpenAPI document and Swagger UI", async () => {
     const app = await buildApp(config());
     const response = await app.inject({ method: "GET", url: "/openapi.json" });
     expect(response.statusCode).toBe(200);
     const spec = response.json();
+    expect(spec.openapi).toBe("3.0.3");
     expect(spec.info.version).toBe("2.5.0");
     expect(spec.paths["/api/v2/risk/score"]).toBeTruthy();
     expect(spec.paths["/api/v2/risk/stress"]).toBeTruthy();
     expect(spec.paths["/api/v2/risk/batch"]).toBeTruthy();
+
+    const docs = await app.inject({ method: "GET", url: "/docs/" });
+    expect(docs.statusCode).toBe(200);
+    expect(docs.headers["content-type"]).toContain("text/html");
+    expect(docs.body.toLowerCase()).toContain("swagger ui");
     await app.close();
   });
 
