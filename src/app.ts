@@ -140,6 +140,8 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     }
   });
 
+  const currentOpenApiDocument = () => ({ ...app.swagger(), openapi: OPENAPI_VERSION });
+
   const redirectToSwagger = async (_request: FastifyRequest, reply: FastifyReply) => {
     setNoStoreHeaders(reply);
     return reply.redirect(`${SWAGGER_UI_PREFIX}/`);
@@ -152,6 +154,13 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   app.get("/docs/", {
     schema: { hide: true },
   }, redirectToSwagger);
+
+  app.get("/docs/json", {
+    schema: { hide: true },
+  }, async (_request, reply) => {
+    setNoStoreHeaders(reply);
+    return currentOpenApiDocument();
+  });
 
   app.get("/", {
     schema: { tags: ["System"], summary: "API index" },
@@ -192,7 +201,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     schema: { tags: ["System"], summary: "OpenAPI document" },
   }, async (_request, reply) => {
     setNoStoreHeaders(reply);
-    return { ...app.swagger(), openapi: OPENAPI_VERSION };
+    return currentOpenApiDocument();
   });
 
   app.get(`${API_MAJOR_PATH}/model`, {
