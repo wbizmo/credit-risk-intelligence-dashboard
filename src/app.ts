@@ -31,6 +31,18 @@ const secureEqual = (actual: string, expected: string): boolean => {
 
 const protectedRoute = (request: FastifyRequest) => request.url === API_MAJOR_PATH || request.url.startsWith(`${API_MAJOR_PATH}/`);
 
+interface ValidationIssue {
+  instancePath?: string;
+  keyword: string;
+  message?: string;
+}
+
+interface RequestErrorShape {
+  validation?: ValidationIssue[];
+  statusCode?: number;
+  message?: string;
+}
+
 export async function buildApp(config: AppConfig = loadConfig()) {
   const app = Fastify({
     logger: config.environment === "test" ? false : {
@@ -215,23 +227,26 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   }));
 
   app.setErrorHandler(async (error, request, reply) => {
-    if (error.validation) {
+    const requestError = error as RequestErrorShape;
+
+    if (requestError.validation) {
       return reply.code(400).send({
         error: "VALIDATION_ERROR",
         message: "Request validation failed.",
         requestId: request.id,
-        details: error.validation.map((item) => ({ instancePath: item.instancePath, keyword: item.keyword, message: item.message })),
+        details: requestError.validation.map((item) => ({ instancePath: item.instancePath, keyword: item.keyword, message: item.message })),
       });
     }
 
-    if (error.statusCode === 429) {
+    if (requestError.statusCode === 429) {
       return reply.code(429).send({ error: "RATE_LIMITED", message: "Too many requests.", requestId: request.id });
     }
 
+    const statusCode = requestError.statusCode && requestError.statusCode < 500 ? requestError.statusCode : 500;
     request.log.error({ err: error }, "Unhandled request error");
-    return reply.code(error.statusCode && error.statusCode < 500 ? error.statusCode : 500).send({
-      error: error.statusCode && error.statusCode < 500 ? "REQUEST_ERROR" : "INTERNAL_ERROR",
-      message: error.statusCode && error.statusCode < 500 ? error.message : "The server could not process this request.",
+    return reply.code(statusCode).send({
+      error: statusCode < 500 ? "REQUEST_ERROR" : "INTERNAL_ERROR",
+      message: statusCode < 500 ? (requestError.message ?? "Request failed.") : "The server could not process this request.",
       requestId: request.id,
     });
   });
