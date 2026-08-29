@@ -42,7 +42,7 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
-  it("publishes non-cacheable valid OpenAPI through the public and Swagger UI spec endpoints", async () => {
+  it("publishes non-cacheable valid OpenAPI through public, legacy and canonical Swagger endpoints", async () => {
     const app = await buildApp(config());
 
     const publicSpecResponse = await app.inject({ method: "GET", url: "/openapi.json" });
@@ -54,6 +54,11 @@ describe("CRIX HTTP API", () => {
     expect(publicSpec.paths["/api/v2/risk/score"]).toBeTruthy();
     expect(publicSpec.paths["/api/v2/risk/stress"]).toBeTruthy();
     expect(publicSpec.paths["/api/v2/risk/batch"]).toBeTruthy();
+
+    const legacySpecResponse = await app.inject({ method: "GET", url: "/docs/json" });
+    expect(legacySpecResponse.statusCode).toBe(200);
+    expect(legacySpecResponse.headers["cache-control"]).toContain("no-store");
+    expect(legacySpecResponse.json().openapi).toBe("3.0.3");
 
     const legacyDocs = await app.inject({ method: "GET", url: "/docs/" });
     expect(legacyDocs.statusCode).toBe(302);
