@@ -8,12 +8,13 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsup src/server.ts --format cjs --platform node --target node22 --out-dir dist --clean --sourcemap",
+    "bundle": "tsup src/server.ts --format cjs --platform node --target node22 --out-dir dist --clean --sourcemap",
+    "build": "npm run lint && npm run typecheck && npm test && npm run bundle",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run build"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.0",
