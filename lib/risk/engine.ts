@@ -22,7 +22,20 @@ const logit = (value: number) => Math.log(value / (1 - value));
 
 function featureVector(input: ApplicationInput): number[] {
   const loanToIncome = input.loanAmount / Math.max(input.annualIncome, 1);
-  const values: Record<string, number> = { ...input, loanToIncome };
+  const values: Record<string, number> = {
+    debtToIncome: input.debtToIncome,
+    creditUtilization: input.creditUtilization,
+    delinquencies24m: input.delinquencies24m,
+    inquiries6m: input.inquiries6m,
+    oldestTradeMonths: input.oldestTradeMonths,
+    openAccounts: input.openAccounts,
+    loanToIncome,
+    employmentYears: input.employmentYears,
+    cashBufferMonths: input.cashBufferMonths,
+    onTimePaymentRate: input.onTimePaymentRate,
+    incomeStability: input.incomeStability,
+    recentCreditGrowth: input.recentCreditGrowth,
+  };
   return artifact.featureNames.map((name) => values[name]);
 }
 
