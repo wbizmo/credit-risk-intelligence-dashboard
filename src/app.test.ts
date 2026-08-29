@@ -42,16 +42,24 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
-  it("publishes a valid OpenAPI document and Swagger UI", async () => {
+  it("publishes valid OpenAPI through both public and Swagger UI spec endpoints", async () => {
     const app = await buildApp(config());
-    const response = await app.inject({ method: "GET", url: "/openapi.json" });
-    expect(response.statusCode).toBe(200);
-    const spec = response.json();
-    expect(spec.openapi).toBe("3.0.3");
-    expect(spec.info.version).toBe("2.5.0");
-    expect(spec.paths["/api/v2/risk/score"]).toBeTruthy();
-    expect(spec.paths["/api/v2/risk/stress"]).toBeTruthy();
-    expect(spec.paths["/api/v2/risk/batch"]).toBeTruthy();
+
+    const publicSpecResponse = await app.inject({ method: "GET", url: "/openapi.json" });
+    expect(publicSpecResponse.statusCode).toBe(200);
+    const publicSpec = publicSpecResponse.json();
+    expect(publicSpec.openapi).toBe("3.0.3");
+    expect(publicSpec.info.version).toBe("2.5.0");
+    expect(publicSpec.paths["/api/v2/risk/score"]).toBeTruthy();
+    expect(publicSpec.paths["/api/v2/risk/stress"]).toBeTruthy();
+    expect(publicSpec.paths["/api/v2/risk/batch"]).toBeTruthy();
+
+    const swaggerSpecResponse = await app.inject({ method: "GET", url: "/docs/json" });
+    expect(swaggerSpecResponse.statusCode).toBe(200);
+    const swaggerSpec = swaggerSpecResponse.json();
+    expect(swaggerSpec.openapi).toBe("3.0.3");
+    expect(swaggerSpec.info.version).toBe("2.5.0");
+    expect(swaggerSpec.paths["/api/v2/risk/score"]).toBeTruthy();
 
     const docs = await app.inject({ method: "GET", url: "/docs/" });
     expect(docs.statusCode).toBe(200);
