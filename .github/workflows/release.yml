@@ -28,17 +28,20 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
-      - name: Publish GitHub release if missing
+      - name: Publish or synchronize GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
+          TITLE="CRIX ${TAG} — Real-World Credit Risk"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; nothing to publish."
+            gh release edit "$TAG" \
+              --title "$TITLE" \
+              --notes-file .github/RELEASE_NOTES.md
             exit 0
           fi
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --title "CRIX $TAG" \
+            --title "$TITLE" \
             --notes-file .github/RELEASE_NOTES.md
