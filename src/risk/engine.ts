@@ -1,4 +1,4 @@
-import rawArtifact from "../../model/artifacts/crix-monoboost-v1.json";
+import rawArtifact from "../../model/artifacts/crix-monoboost-v2.json";
 import type { ApplicationInput, Decision, ReasonCode, RiskResult, StressResult, StressSeverity } from "./types";
 
 interface ModelTree {
@@ -10,13 +10,22 @@ interface ModelTree {
 }
 
 interface ModelArtifact {
+  schemaVersion: number;
   name: string;
   version: string;
   trainedAt: string;
+  target: { name: string; definition: string; horizon: string };
   featureNames: string[];
   monotoneConstraints: number[];
   baseScore: number;
-  calibration: { slope: number; intercept: number };
+  calibration: { method: string; slope: number; intercept: number };
+  challenger: {
+    name: string;
+    intercept: number;
+    coefficients: number[];
+    means: number[];
+    scales: number[];
+  };
   trees: ModelTree[];
   metrics: Record<string, number>;
   diagnostics: {
@@ -25,6 +34,8 @@ interface ModelArtifact {
     featureImportance: Array<{ feature: string; gain: number }>;
   };
   reference: Record<string, number>;
+  trainingBounds: Record<string, { p01: number; p99: number }>;
+  training: Record<string, unknown>;
 }
 
 const artifact = rawArtifact as ModelArtifact;
@@ -32,6 +43,7 @@ const artifact = rawArtifact as ModelArtifact;
 const FEATURE_LABELS: Record<string, string> = {
   debtToIncome: "Debt-to-income ratio",
   creditUtilization: "Revolving utilization",
+  creditScore: "External bureau credit score",
   delinquencies24m: "Recent delinquencies",
   inquiries6m: "Recent credit inquiries",
   oldestTradeMonths: "Credit history age",
@@ -45,9 +57,10 @@ const FEATURE_LABELS: Record<string, string> = {
 };
 
 export const POLICY = Object.freeze({
-  version: "CRIX-Policy 2.5",
-  decline: { pd: 0.22, debtToIncome: 0.67, delinquencies24m: 5, loanToIncome: 1.4 },
-  review: { pd: 0.105, debtToIncome: 0.48, confidence: 0.66, delinquencies24m: 2 },
+  version: "CRIX-Policy 3.0",
+  target: "origination default risk over final loan resolution",
+  decline: { pd: 0.35, debtToIncome: 0.67, creditScore: 580, delinquencies24m: 5, loanToIncome: 1.4 },
+  review: { pd: 0.20, debtToIncome: 0.48, creditScore: 660, confidence: 0.66, delinquencies24m: 2 },
 });
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -58,6 +71,7 @@ function numericInput(input: ApplicationInput): Record<string, number> {
   return {
     annualIncome: input.annualIncome,
     debtToIncome: input.debtToIncome,
+    creditScore: input.creditScore,
     creditUtilization: input.creditUtilization,
     delinquencies24m: input.delinquencies24m,
     inquiries6m: input.inquiries6m,
@@ -81,24 +95,27 @@ function assertFiniteInput(input: ApplicationInput): void {
   if (input.loanAmount <= 0) throw new RangeError("loanAmount must be greater than zero");
 }
 
-function featureVector(input: ApplicationInput): number[] {
+function featureValueMap(input: ApplicationInput): Record<string, number> {
   assertFiniteInput(input);
-  const loanToIncome = input.loanAmount / input.annualIncome;
-  const values: Record<string, number> = {
+  return {
     debtToIncome: input.debtToIncome,
     creditUtilization: input.creditUtilization,
+    creditScore: input.creditScore,
     delinquencies24m: input.delinquencies24m,
     inquiries6m: input.inquiries6m,
     oldestTradeMonths: input.oldestTradeMonths,
     openAccounts: input.openAccounts,
-    loanToIncome,
+    loanToIncome: input.loanAmount / input.annualIncome,
     employmentYears: input.employmentYears,
     cashBufferMonths: input.cashBufferMonths,
     onTimePaymentRate: input.onTimePaymentRate,
     incomeStability: input.incomeStability,
     recentCreditGrowth: input.recentCreditGrowth,
   };
+}
 
+function featureVector(input: ApplicationInput): number[] {
+  const values = featureValueMap(input);
   return artifact.featureNames.map((name) => {
     const value = values[name];
     if (value === undefined) throw new Error(`Model artifact requests unknown feature: ${name}`);
@@ -150,41 +167,35 @@ export function predictDefaultProbability(input: ApplicationInput): number {
 }
 
 export function predictChallengerProbability(input: ApplicationInput): number {
-  assertFiniteInput(input);
-  const loanToIncome = input.loanAmount / input.annualIncome;
-  const z =
-    -4.05 +
-    3.15 * input.debtToIncome +
-    2.45 * input.creditUtilization +
-    0.34 * input.delinquencies24m +
-    0.11 * input.inquiries6m -
-    0.0032 * input.oldestTradeMonths +
-    1.02 * loanToIncome -
-    0.047 * input.employmentYears -
-    0.145 * input.cashBufferMonths -
-    1.9 * (input.onTimePaymentRate - 0.82) -
-    0.78 * (input.incomeStability - 0.55) +
-    0.71 * input.recentCreditGrowth;
-  return clamp(sigmoid(z), 0.0001, 0.9999);
+  const x = featureVector(input);
+  const challenger = artifact.challenger;
+  if (
+    challenger.coefficients.length !== x.length ||
+    challenger.means.length !== x.length ||
+    challenger.scales.length !== x.length
+  ) throw new Error("Challenger artifact dimensions do not match champion feature contract");
+
+  let margin = challenger.intercept;
+  for (let index = 0; index < x.length; index += 1) {
+    const scale = challenger.scales[index];
+    const mean = challenger.means[index];
+    const coefficient = challenger.coefficients[index];
+    if (scale === undefined || mean === undefined || coefficient === undefined || !Number.isFinite(scale) || scale <= 0) {
+      throw new Error("Challenger artifact contains an invalid standardization parameter");
+    }
+    margin += coefficient * ((x[index]! - mean) / scale);
+  }
+  return clamp(sigmoid(margin), 0.0001, 0.9999);
 }
 
 function outOfDistributionSignals(input: ApplicationInput): string[] {
-  const loanToIncome = input.loanAmount / input.annualIncome;
-  const checks: Array<[boolean, string]> = [
-    [input.annualIncome < 18_000 || input.annualIncome > 350_000, "annualIncome"],
-    [input.debtToIncome > 0.85, "debtToIncome"],
-    [input.creditUtilization > 1.15, "creditUtilization"],
-    [input.delinquencies24m > 8, "delinquencies24m"],
-    [input.inquiries6m > 10, "inquiries6m"],
-    [input.oldestTradeMonths < 6 || input.oldestTradeMonths > 360, "oldestTradeMonths"],
-    [input.openAccounts > 30, "openAccounts"],
-    [loanToIncome > 2.5, "loanToIncome"],
-    [input.employmentYears > 30, "employmentYears"],
-    [input.cashBufferMonths > 12, "cashBufferMonths"],
-    [input.onTimePaymentRate < 0.5, "onTimePaymentRate"],
-    [input.recentCreditGrowth < -0.5 || input.recentCreditGrowth > 1.5, "recentCreditGrowth"],
-  ];
-  return checks.filter(([flag]) => flag).map(([, field]) => field);
+  const values = featureValueMap(input);
+  return artifact.featureNames.filter((feature) => {
+    const bound = artifact.trainingBounds[feature];
+    const value = values[feature];
+    if (!bound || value === undefined) return true;
+    return value < bound.p01 || value > bound.p99;
+  });
 }
 
 function withReferenceFeature(input: ApplicationInput, feature: string): ApplicationInput {
@@ -196,6 +207,7 @@ function withReferenceFeature(input: ApplicationInput, feature: string): Applica
   switch (feature) {
     case "debtToIncome": candidate.debtToIncome = reference; break;
     case "creditUtilization": candidate.creditUtilization = reference; break;
+    case "creditScore": candidate.creditScore = reference; break;
     case "delinquencies24m": candidate.delinquencies24m = reference; break;
     case "inquiries6m": candidate.inquiries6m = reference; break;
     case "oldestTradeMonths": candidate.oldestTradeMonths = reference; break;
@@ -246,6 +258,7 @@ function policyDecision(pd: number, input: ApplicationInput, confidence: number)
   if (
     pd >= POLICY.decline.pd ||
     input.debtToIncome >= POLICY.decline.debtToIncome ||
+    input.creditScore <= POLICY.decline.creditScore ||
     input.delinquencies24m >= POLICY.decline.delinquencies24m ||
     loanToIncome >= POLICY.decline.loanToIncome
   ) return "DECLINE";
@@ -253,6 +266,7 @@ function policyDecision(pd: number, input: ApplicationInput, confidence: number)
   if (
     pd >= POLICY.review.pd ||
     input.debtToIncome >= POLICY.review.debtToIncome ||
+    input.creditScore <= POLICY.review.creditScore ||
     confidence < POLICY.review.confidence ||
     input.delinquencies24m >= POLICY.review.delinquencies24m
   ) return "REVIEW";
@@ -280,6 +294,7 @@ export function assessRisk(input: ApplicationInput): RiskResult {
 
   return {
     pd,
+    pdHorizon: artifact.target.horizon,
     challengerPd,
     disagreement,
     lgd,
@@ -332,23 +347,29 @@ export function modelMetadata() {
     name: artifact.name,
     version: artifact.version,
     trainedAt: artifact.trainedAt,
+    target: artifact.target,
     features: artifact.featureNames,
     monotoneConstraints: artifact.monotoneConstraints,
     calibration: artifact.calibration,
+    challenger: { name: artifact.challenger.name },
     metrics: artifact.metrics,
     diagnostics: artifact.diagnostics,
+    trainingBounds: artifact.trainingBounds,
+    training: artifact.training,
     treeCount: artifact.trees.length,
     policy: POLICY,
   };
 }
 
 export function verifyModelIntegrity(): boolean {
-  if (!artifact.name || !artifact.version || artifact.trees.length === 0) return false;
+  if (artifact.schemaVersion !== 2 || !artifact.name || !artifact.version || artifact.trees.length === 0) return false;
   if (artifact.featureNames.length !== artifact.monotoneConstraints.length) return false;
   if (!Number.isFinite(artifact.calibration.slope) || !Number.isFinite(artifact.calibration.intercept)) return false;
+  if (artifact.challenger.coefficients.length !== artifact.featureNames.length) return false;
   const sentinel: ApplicationInput = {
     annualIncome: 85_000,
     debtToIncome: 0.28,
+    creditScore: 720,
     creditUtilization: 0.3,
     delinquencies24m: 0,
     inquiries6m: 1,

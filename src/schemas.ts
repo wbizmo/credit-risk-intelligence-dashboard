@@ -1,12 +1,12 @@
-export const API_VERSION = "2.5.0";
-export const API_MAJOR_PATH = "/api/v2";
+export const API_VERSION = "3.0.0";
+export const API_MAJOR_PATH = "/api/v3";
 export const MAX_BATCH_SIZE = 50;
 
 export const applicationSchema = {
   type: "object",
   additionalProperties: false,
   required: [
-    "annualIncome", "debtToIncome", "creditUtilization", "delinquencies24m",
+    "annualIncome", "debtToIncome", "creditScore", "creditUtilization", "delinquencies24m",
     "inquiries6m", "oldestTradeMonths", "openAccounts", "loanAmount", "termMonths",
     "employmentYears", "cashBufferMonths", "onTimePaymentRate", "incomeStability", "recentCreditGrowth"
   ],
@@ -14,6 +14,7 @@ export const applicationSchema = {
     applicationId: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._:-]+$" },
     annualIncome: { type: "number", exclusiveMinimum: 0, maximum: 10_000_000 },
     debtToIncome: { type: "number", minimum: 0, maximum: 2 },
+    creditScore: { type: "integer", minimum: 300, maximum: 850 },
     creditUtilization: { type: "number", minimum: 0, maximum: 2 },
     delinquencies24m: { type: "integer", minimum: 0, maximum: 50 },
     inquiries6m: { type: "integer", minimum: 0, maximum: 50 },
@@ -45,12 +46,13 @@ export const riskResultSchema = {
   type: "object",
   additionalProperties: false,
   required: [
-    "pd", "challengerPd", "disagreement", "lgd", "ead", "expectedLoss", "expectedLossRate",
+    "pd", "pdHorizon", "challengerPd", "disagreement", "lgd", "ead", "expectedLoss", "expectedLossRate",
     "score", "grade", "decision", "confidence", "apr", "reasons", "modelVersion", "policyVersion",
     "outOfDistribution", "flags"
   ],
   properties: {
     pd: { type: "number", minimum: 0, maximum: 1 },
+    pdHorizon: { type: "string" },
     challengerPd: { type: "number", minimum: 0, maximum: 1 },
     disagreement: { type: "number", minimum: 0, maximum: 1 },
     lgd: { type: "number", minimum: 0, maximum: 1 },
@@ -209,25 +211,42 @@ export const batchResponseSchema = {
 export const modelResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["requestId", "apiVersion", "name", "version", "trainedAt", "features", "monotoneConstraints", "calibration", "metrics", "diagnostics", "treeCount", "policy"],
+  required: [
+    "requestId", "apiVersion", "name", "version", "trainedAt", "target", "features",
+    "monotoneConstraints", "calibration", "challenger", "metrics", "diagnostics",
+    "trainingBounds", "training", "treeCount", "policy"
+  ],
   properties: {
     requestId: { type: "string" },
     apiVersion: { type: "string" },
     name: { type: "string" },
     version: { type: "string" },
     trainedAt: { type: "string" },
+    target: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "definition", "horizon"],
+      properties: {
+        name: { type: "string" },
+        definition: { type: "string" },
+        horizon: { type: "string" }
+      }
+    },
     features: { type: "array", items: { type: "string" } },
     monotoneConstraints: { type: "array", items: { type: "integer" } },
     calibration: {
       type: "object",
       additionalProperties: false,
-      required: ["slope", "intercept"],
-      properties: { slope: { type: "number" }, intercept: { type: "number" } }
+      required: ["method", "slope", "intercept"],
+      properties: { method: { type: "string" }, slope: { type: "number" }, intercept: { type: "number" } }
     },
-    metrics: {
+    challenger: {
       type: "object",
-      additionalProperties: { type: "number" }
+      additionalProperties: false,
+      required: ["name"],
+      properties: { name: { type: "string" } }
     },
+    metrics: { type: "object", additionalProperties: { type: "number" } },
     diagnostics: {
       type: "object",
       additionalProperties: false,
@@ -262,6 +281,16 @@ export const modelResponseSchema = {
         }
       }
     },
+    trainingBounds: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: false,
+        required: ["p01", "p99"],
+        properties: { p01: { type: "number" }, p99: { type: "number" } }
+      }
+    },
+    training: { type: "object", additionalProperties: true },
     treeCount: { type: "integer", minimum: 1 },
     policy: { type: "object", additionalProperties: true }
   }

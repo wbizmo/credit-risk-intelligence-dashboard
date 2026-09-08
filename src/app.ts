@@ -93,7 +93,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
       info: {
         title: "CRIX Credit Risk Intelligence API",
         version: API_VERSION,
-        description: "Stateless credit-risk scoring, model diagnostics, policy decisioning and stress testing. The bundled model is trained on synthetic data and is for engineering/model-risk demonstration only.",
+        description: "Stateless credit-risk scoring, model diagnostics, policy decisioning and stress testing. CRIX-MonoBoost 2.0 is trained and calibrated on resolved real-world LendingClub originations with chronological out-of-time evaluation. Its reported PD is final-loan-resolution default risk, not a 12-month PD, and the public service remains an engineering/model-risk demonstration rather than an approved consumer-credit decision system.",
       },
       tags: [
         { name: "System", description: "Service health and discoverability" },
@@ -208,7 +208,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     schema: {
       tags: ["Model"],
       summary: "Model and policy metadata",
-      description: "Returns model version, calibration, held-out validation metrics, feature metadata, diagnostics and current policy thresholds. Tree internals are intentionally not returned by the API.",
+      description: "Returns model version, target semantics, calibration, out-of-time validation metrics, training provenance, feature metadata, diagnostics and current policy thresholds. Tree internals are intentionally not returned by the API.",
       response: { 200: modelResponseSchema, 401: errorSchema, 429: errorSchema },
     },
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...modelMetadata() }));
@@ -218,7 +218,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     schema: {
       tags: ["Risk"],
       summary: "Score a single credit application",
-      description: "Runs the calibrated monotonic champion, transparent challenger, confidence/OOD checks, LGD/EAD/expected-loss estimation, reason codes, and independent policy decision.",
+      description: "Runs the real-data calibrated monotonic champion, exported logistic challenger, confidence/OOD checks, LGD/EAD/expected-loss estimation, reason codes, and independent policy decision. The returned pd is explicitly labeled with its final-loan-resolution horizon.",
       body: applicationSchema,
       response: { 200: scoreResponseSchema, 400: errorSchema, 401: errorSchema, 429: errorSchema },
     },

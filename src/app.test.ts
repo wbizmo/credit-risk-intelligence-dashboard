@@ -6,6 +6,7 @@ const application = {
   applicationId: "demo-001",
   annualIncome: 85_000,
   debtToIncome: 0.28,
+  creditScore: 720,
   creditUtilization: 0.3,
   delinquencies24m: 0,
   inquiries6m: 1,
@@ -50,10 +51,10 @@ describe("CRIX HTTP API", () => {
     expect(publicSpecResponse.headers["cache-control"]).toContain("no-store");
     const publicSpec = publicSpecResponse.json();
     expect(publicSpec.openapi).toBe("3.0.3");
-    expect(publicSpec.info.version).toBe("2.5.0");
-    expect(publicSpec.paths["/api/v2/risk/score"]).toBeTruthy();
-    expect(publicSpec.paths["/api/v2/risk/stress"]).toBeTruthy();
-    expect(publicSpec.paths["/api/v2/risk/batch"]).toBeTruthy();
+    expect(publicSpec.info.version).toBe("3.0.0");
+    expect(publicSpec.paths["/api/v3/risk/score"]).toBeTruthy();
+    expect(publicSpec.paths["/api/v3/risk/stress"]).toBeTruthy();
+    expect(publicSpec.paths["/api/v3/risk/batch"]).toBeTruthy();
 
     const legacySpecResponse = await app.inject({ method: "GET", url: "/docs/json" });
     expect(legacySpecResponse.statusCode).toBe(200);
@@ -76,20 +77,31 @@ describe("CRIX HTTP API", () => {
     expect(swaggerSpecResponse.headers["cache-control"]).toContain("no-store");
     const swaggerSpec = swaggerSpecResponse.json();
     expect(swaggerSpec.openapi).toBe("3.0.3");
-    expect(swaggerSpec.info.version).toBe("2.5.0");
-    expect(swaggerSpec.paths["/api/v2/risk/score"]).toBeTruthy();
+    expect(swaggerSpec.info.version).toBe("3.0.0");
+    expect(swaggerSpec.paths["/api/v3/risk/score"]).toBeTruthy();
     await app.close();
   });
 
-  it("scores a valid application", async () => {
+  it("scores a valid application with an explicit probability horizon", async () => {
     const app = await buildApp(config());
-    const response = await app.inject({ method: "POST", url: "/api/v2/risk/score", payload: application });
+    const response = await app.inject({ method: "POST", url: "/api/v3/risk/score", payload: application });
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.apiVersion).toBe("2.5.0");
+    expect(body.apiVersion).toBe("3.0.0");
     expect(body.requestId).toBeTruthy();
     expect(body.result.pd).toBeGreaterThan(0);
+    expect(body.result.pdHorizon).toContain("final-loan-resolution");
     expect(body.result.modelVersion).toContain("CRIX-MonoBoost");
+    await app.close();
+  });
+
+  it("requires the bureau credit score introduced by the v3 model contract", async () => {
+    const app = await buildApp(config());
+    const withoutCreditScore: Record<string, unknown> = { ...application };
+    delete withoutCreditScore.creditScore;
+    const response = await app.inject({ method: "POST", url: "/api/v3/risk/score", payload: withoutCreditScore });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe("VALIDATION_ERROR");
     await app.close();
   });
 
@@ -97,7 +109,7 @@ describe("CRIX HTTP API", () => {
     const app = await buildApp(config());
     const response = await app.inject({
       method: "POST",
-      url: "/api/v2/risk/score",
+      url: "/api/v3/risk/score",
       payload: { ...application, annualIncome: -1, unexpected: true },
     });
     expect(response.statusCode).toBe(400);
@@ -108,10 +120,10 @@ describe("CRIX HTTP API", () => {
   it("enforces optional API-key authentication with the same public health probes", async () => {
     const app = await buildApp(config("top-secret-test-key"));
     const health = await app.inject({ method: "GET", url: "/health" });
-    const denied = await app.inject({ method: "POST", url: "/api/v2/risk/score", payload: application });
+    const denied = await app.inject({ method: "POST", url: "/api/v3/risk/score", payload: application });
     const allowed = await app.inject({
       method: "POST",
-      url: "/api/v2/risk/score",
+      url: "/api/v3/risk/score",
       headers: { "x-api-key": "top-secret-test-key" },
       payload: application,
     });
@@ -125,7 +137,7 @@ describe("CRIX HTTP API", () => {
     const app = await buildApp(config());
     const response = await app.inject({
       method: "POST",
-      url: "/api/v2/risk/batch",
+      url: "/api/v3/risk/batch",
       payload: { applications: Array.from({ length: 51 }, () => application) },
     });
     expect(response.statusCode).toBe(400);

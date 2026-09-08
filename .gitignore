@@ -7,4 +7,6 @@ coverage/
 *.log
 .DS_Store
 model/.venv/
+model/data/
 model/raw.json
+model/raw-v2.json
