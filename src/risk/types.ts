@@ -5,6 +5,7 @@ export interface ApplicationInput {
   applicationId?: string;
   annualIncome: number;
   debtToIncome: number;
+  creditScore: number;
   creditUtilization: number;
   delinquencies24m: number;
   inquiries6m: number;
@@ -28,6 +29,7 @@ export interface ReasonCode {
 
 export interface RiskResult {
   pd: number;
+  pdHorizon: string;
   challengerPd: number;
   disagreement: number;
   lgd: number;
