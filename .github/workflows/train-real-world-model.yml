@@ -8,6 +8,7 @@ on:
     paths:
       - model/datasets.py
       - model/train.py
+      - model/benchmark_external.py
       - model/requirements.txt
       - .github/workflows/train-real-world-model.yml
 
@@ -21,7 +22,7 @@ concurrency:
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,16 +36,23 @@ jobs:
         run: pip install -r model/requirements.txt
       - name: Train and validate real-data champion/challenger
         run: python model/train.py
+      - name: Run external real-world adaptation benchmarks
+        run: python model/benchmark_external.py
       - name: Commit immutable trained artifacts
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add model/artifacts/crix-monoboost-v2.json model/TRAINING_REPORT.md
+          git add \
+            model/artifacts/crix-monoboost-v2.json \
+            model/artifacts/crix-behavior-tw-v1.json \
+            model/artifacts/external-benchmarks.json \
+            model/TRAINING_REPORT.md \
+            model/EXTERNAL_BENCHMARKS.md
           if git diff --cached --quiet; then
-            echo "Training reproduced the committed artifact; nothing to commit."
+            echo "Training reproduced the committed artifacts; nothing to commit."
             exit 0
           fi
-          git commit -m "chore(model): publish real-world CRIX v2 artifact"
+          git commit -m "chore(model): publish CRIX real-world artifacts"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin HEAD:"${GITHUB_REF_NAME}"
