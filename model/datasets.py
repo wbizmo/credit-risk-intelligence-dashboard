@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +11,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-LENDINGCLUB_URL = "https://zenodo.org/records/11295916/files/LC_loans_granting_model_dataset.csv?download=1"
+LENDINGCLUB_URLS = [
+    "https://zenodo.org/records/11295916/files/LC_loans_granting_model_dataset.csv?download=1",
+    "https://zenodo.org/api/records/11295916/files/LC_loans_granting_model_dataset.csv/content",
+]
 LENDINGCLUB_MD5 = "b019384d6bc65bf2a3e839362e4ff502"
 LENDINGCLUB_DOI = "10.5281/zenodo.11295916"
 
@@ -105,27 +110,43 @@ def md5sum(path: Path, chunk_size: int = 1 << 20) -> str:
     return digest.hexdigest()
 
 
+def _download_once(url: str, temporary: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "CRIX-model-training/3.0"})
+    with urllib.request.urlopen(request, timeout=300) as response, temporary.open("wb") as output:
+        while chunk := response.read(1 << 20):
+            output.write(chunk)
+
+
 def download_lendingclub(destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and md5sum(destination) == LENDINGCLUB_MD5:
         return destination
 
     temporary = destination.with_suffix(destination.suffix + ".part")
-    request = urllib.request.Request(
-        LENDINGCLUB_URL,
-        headers={"User-Agent": "CRIX-model-training/3.0"},
-    )
-    with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as output:
-        while chunk := response.read(1 << 20):
-            output.write(chunk)
+    last_error: Exception | None = None
 
-    actual = md5sum(temporary)
-    if actual != LENDINGCLUB_MD5:
-        temporary.unlink(missing_ok=True)
-        raise RuntimeError(f"LendingClub checksum mismatch: expected {LENDINGCLUB_MD5}, got {actual}")
+    # Zenodo occasionally returns transient 5xx/504 responses for the 167 MB file.
+    # Retry both the canonical file URL and the Records API content URL, but still
+    # require the immutable source checksum before the cohort can enter training.
+    for attempt in range(1, 6):
+        for url in LENDINGCLUB_URLS:
+            temporary.unlink(missing_ok=True)
+            try:
+                _download_once(url, temporary)
+                actual = md5sum(temporary)
+                if actual != LENDINGCLUB_MD5:
+                    raise RuntimeError(
+                        f"LendingClub checksum mismatch: expected {LENDINGCLUB_MD5}, got {actual}"
+                    )
+                temporary.replace(destination)
+                return destination
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, RuntimeError) as error:
+                last_error = error
+                temporary.unlink(missing_ok=True)
+        if attempt < 5:
+            time.sleep(attempt * 5)
 
-    temporary.replace(destination)
-    return destination
+    raise RuntimeError(f"Unable to download verified LendingClub source after retries: {last_error}")
 
 
 def _parse_employment_years(value: object) -> float:
