@@ -14,7 +14,7 @@ LENDINGCLUB_MD5 = "b019384d6bc65bf2a3e839362e4ff502"
 LENDINGCLUB_DOI = "10.5281/zenodo.11295916"
 
 # Registry is deliberately explicit about what is and is not used for training.
-# Gated / product-mismatched sources are not silently concatenated into the champion cohort.
+# Product-mismatched or access-gated sources are never silently concatenated into the champion cohort.
 DATASET_REGISTRY = {
     "lendingclub": {
         "product": "unsecured-personal-loan",
@@ -27,6 +27,30 @@ DATASET_REGISTRY = {
         "version": "0.1",
         "license": "CC-BY-4.0",
         "target": "final resolved status: charged-off/default=1, fully-paid=0",
+    },
+    "uci-statlog-german-credit": {
+        "product": "consumer-instalment-credit",
+        "role": "source-specific-external-benchmark",
+        "access": "open-download",
+        "source": "UCI Statlog (German Credit Data)",
+        "url": "https://archive.ics.uci.edu/dataset/144/statlog+german+credit+data",
+        "doi": "10.24432/C5NC77",
+        "license": "CC-BY-4.0",
+        "rows": 1000,
+        "target": "good=1, bad=2; CRIX benchmark remaps bad to 1",
+        "note": "Used only as a dataset-specific benchmark. UCI documents known coding-table problems in the legacy Statlog representation; no values are mapped into the LendingClub champion feature contract.",
+    },
+    "uci-taiwan-credit-card-default": {
+        "product": "revolving-credit-card",
+        "role": "source-specific-external-benchmark",
+        "access": "open-download",
+        "source": "UCI Default of Credit Card Clients",
+        "url": "https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients",
+        "doi": "10.24432/C55S3H",
+        "license": "CC-BY-4.0",
+        "rows": 30000,
+        "target": "default payment next month: yes=1, no=0",
+        "note": "Real Taiwanese bank credit-card data. Used as a source-specific benchmark rather than pooled into the personal-loan champion because product, features, geography and target horizon differ.",
     },
     "home-credit": {
         "product": "consumer-credit",
@@ -122,7 +146,6 @@ def _parse_issue_dates(series: pd.Series) -> pd.Series:
     parsed = pd.to_datetime(series, errors="coerce", format="mixed")
     if parsed.notna().mean() >= 0.95:
         return parsed
-    # pandas installations differ in how aggressively they infer abbreviated months.
     fallback = pd.to_datetime(series, errors="coerce")
     return parsed.fillna(fallback)
 
@@ -144,8 +167,6 @@ def harmonize_lendingclub(path: Path) -> HarmonizedDataset:
         }
     )
 
-    # LendingClub's source DTI is normally stored as percentage points (e.g. 18.4).
-    # Detect that representation instead of hardcoding a unit assumption.
     finite_dti = frame.loc[np.isfinite(frame["debtToIncome"]), "debtToIncome"]
     if not finite_dti.empty and finite_dti.median() > 2:
         frame["debtToIncome"] = frame["debtToIncome"] / 100.0
@@ -154,7 +175,6 @@ def harmonize_lendingclub(path: Path) -> HarmonizedDataset:
     frame = frame.replace([np.inf, -np.inf], np.nan)
     frame = frame.dropna(subset=["issueDate", "annualIncome", "loanAmount", "target", *FEATURES])
 
-    # Fail closed on implausible / incompatible rows rather than clipping them into the training domain.
     frame = frame[
         (frame["annualIncome"] > 0)
         & (frame["loanAmount"] > 0)
