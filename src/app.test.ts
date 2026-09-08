@@ -97,7 +97,8 @@ describe("CRIX HTTP API", () => {
 
   it("requires the bureau credit score introduced by the v3 model contract", async () => {
     const app = await buildApp(config());
-    const { creditScore: _creditScore, ...withoutCreditScore } = application;
+    const withoutCreditScore: Record<string, unknown> = { ...application };
+    delete withoutCreditScore.creditScore;
     const response = await app.inject({ method: "POST", url: "/api/v3/risk/score", payload: withoutCreditScore });
     expect(response.statusCode).toBe(400);
     expect(response.json().error).toBe("VALIDATION_ERROR");
