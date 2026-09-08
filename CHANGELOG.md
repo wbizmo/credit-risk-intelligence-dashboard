@@ -23,12 +23,12 @@ All notable CRIX releases are documented here.
 
 ### Real-world adaptation research
 
-- Added separate UCI Taiwan credit-card behavioral adaptation model using six-month utilization, payment behavior and normalized balance growth.
+- Added separate UCI Taiwan credit-card behavioral adaptation model using six-month utilization, payment behavior and normalized balance growth; 10-fold CV ROC-AUC **0.7606**, Brier **0.1416**, log loss **0.4464** across 30,000 clients.
 - Explicitly excludes `SEX`, `EDUCATION`, `MARRIAGE` and `AGE` from the Taiwan research artifact.
-- Added legacy UCI Statlog German Credit structural benchmark.
-- Added corrected UCI South German Credit structural benchmark and documents why it is preferred.
+- Added legacy UCI Statlog German Credit structural benchmark; 10-fold CV ROC-AUC **0.6672**.
+- Added corrected UCI South German Credit structural benchmark; 10-fold CV ROC-AUC **0.6718**, and documents why it is preferred over the legacy encoding.
 - Added dataset registry entries for gated/future Home Credit, Give Me Some Credit, FICO HELOC, Freddie Mac and Fannie Mae sources without claiming they were used.
-- Added reproducible GitHub Actions training/benchmark workflow.
+- Added reproducible GitHub Actions training/benchmark workflow with resilient, checksum-verified Zenodo download and source caching.
 
 ### Governance
 
