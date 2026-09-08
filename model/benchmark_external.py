@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from pathlib import Path
 
@@ -12,6 +13,19 @@ from sklearn.model_selection import StratifiedKFold
 from ucimlrepo import fetch_ucirepo
 
 SEED = 42
+
+
+def _sanitize_feature_names(frame: pd.DataFrame) -> pd.DataFrame:
+    sanitized: list[str] = []
+    seen: dict[str, int] = {}
+    for column in frame.columns:
+        base = re.sub(r"[\[\]<>]", "_", str(column))
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        sanitized.append(base if count == 0 else f"{base}__{count}")
+    result = frame.copy()
+    result.columns = sanitized
+    return result
 
 
 def _metrics_from_cv(X: pd.DataFrame, y: np.ndarray, *, folds: int = 10) -> dict[str, float | int]:
@@ -75,7 +89,7 @@ def taiwan_behavioral() -> tuple[dict[str, object], pd.DataFrame, np.ndarray]:
             "onTimePaymentRate6m": (pay_status <= 0).mean(axis=1),
             "paymentDelayMonths6m": (pay_status > 0).sum(axis=1).astype(float),
             # X12 is Sep 2005 (most recent bill), X17 is Apr 2005 (oldest bill).
-            # Normalize the six-month balance change by the credit limit, not by a potentially tiny bill.
+            # Normalize six-month balance change by the credit limit, not by a potentially tiny bill.
             "recentCreditGrowth6m": _safe_divide(bills["X12"] - bills["X17"], limit_balance),
         }
     ).replace([np.inf, -np.inf], np.nan)
@@ -111,14 +125,11 @@ def _encode_german(dataset_id: int, corrected: bool) -> tuple[pd.DataFrame, np.n
     target_raw = pd.to_numeric(dataset.data.targets.iloc[:, 0], errors="raise").astype(int)
 
     if corrected:
-        # Corrected South German target is 1=good, 0=bad.
         target = (target_raw.to_numpy() == 0).astype(np.int8)
         keep = ["duration", "amount", "employment_duration", "installment_rate", "number_credits"]
-        # ucimlrepo may return repository column names rather than variable names. Fall back to positions.
         if not set(keep).issubset(raw.columns):
             keep = [raw.columns[i] for i in [1, 4, 6, 7, 15]]
     else:
-        # Legacy Statlog target is 1=good, 2=bad.
         target = (target_raw.to_numpy() == 2).astype(np.int8)
         keep = ["Attribute2", "Attribute5", "Attribute7", "Attribute8", "Attribute16"]
 
@@ -129,11 +140,12 @@ def _encode_german(dataset_id: int, corrected: bool) -> tuple[pd.DataFrame, np.n
         else:
             frame[column] = frame[column].astype("string")
     frame = pd.get_dummies(frame, dummy_na=True, dtype=np.float32)
+    frame = _sanitize_feature_names(frame)
     frame = frame.replace([np.inf, -np.inf], np.nan)
     for column in frame.columns:
         if frame[column].isna().any():
             frame[column] = frame[column].fillna(frame[column].median())
-    return frame.astype(np.float32), target, keep
+    return frame.astype(np.float32), target, [str(value) for value in keep]
 
 
 def german_structural(dataset_id: int, corrected: bool) -> dict[str, object]:
