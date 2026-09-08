@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import re
+import urllib.request
+import zipfile
 from datetime import date
 from pathlib import Path
 
@@ -13,6 +16,13 @@ from sklearn.model_selection import StratifiedKFold
 from ucimlrepo import fetch_ucirepo
 
 SEED = 42
+SOUTH_GERMAN_URL = "https://archive.ics.uci.edu/static/public/573/south+german+credit+update.zip"
+SOUTH_GERMAN_COLUMNS = [
+    "status", "duration", "credit_history", "purpose", "amount", "savings",
+    "employment_duration", "installment_rate", "personal_status_sex", "other_debtors",
+    "present_residence", "property", "age", "other_installment_plans", "housing",
+    "number_credits", "job", "people_liable", "telephone", "foreign_worker", "credit_risk",
+]
 
 
 def _sanitize_feature_names(frame: pd.DataFrame) -> pd.DataFrame:
@@ -88,8 +98,6 @@ def taiwan_behavioral() -> tuple[dict[str, object], pd.DataFrame, np.ndarray]:
             "creditUtilization6mMean": monthly_utilization.mean(axis=1),
             "onTimePaymentRate6m": (pay_status <= 0).mean(axis=1),
             "paymentDelayMonths6m": (pay_status > 0).sum(axis=1).astype(float),
-            # X12 is Sep 2005 (most recent bill), X17 is Apr 2005 (oldest bill).
-            # Normalize six-month balance change by the credit limit, not by a potentially tiny bill.
             "recentCreditGrowth6m": _safe_divide(bills["X12"] - bills["X17"], limit_balance),
         }
     ).replace([np.inf, -np.inf], np.nan)
@@ -119,17 +127,31 @@ def taiwan_behavioral() -> tuple[dict[str, object], pd.DataFrame, np.ndarray]:
     )
 
 
-def _encode_german(dataset_id: int, corrected: bool) -> tuple[pd.DataFrame, np.ndarray, list[str]]:
-    dataset = fetch_ucirepo(id=dataset_id)
-    raw = dataset.data.features.copy()
-    target_raw = pd.to_numeric(dataset.data.targets.iloc[:, 0], errors="raise").astype(int)
+def _fetch_south_german() -> tuple[pd.DataFrame, np.ndarray]:
+    request = urllib.request.Request(SOUTH_GERMAN_URL, headers={"User-Agent": "CRIX-model-benchmark/3.0"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = response.read()
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        with archive.open("SouthGermanCredit.asc") as source:
+            raw = pd.read_csv(source, sep=r"\s+", engine="python")
 
+    if list(raw.columns) != SOUTH_GERMAN_COLUMNS:
+        raw.columns = SOUTH_GERMAN_COLUMNS
+    if len(raw) != 1000:
+        raise RuntimeError(f"South German Credit expected 1000 rows, got {len(raw)}")
+
+    target = (pd.to_numeric(raw.pop("credit_risk"), errors="raise").to_numpy() == 0).astype(np.int8)
+    return raw, target
+
+
+def _encode_german(dataset_id: int, corrected: bool) -> tuple[pd.DataFrame, np.ndarray, list[str]]:
     if corrected:
-        target = (target_raw.to_numpy() == 0).astype(np.int8)
+        raw, target = _fetch_south_german()
         keep = ["duration", "amount", "employment_duration", "installment_rate", "number_credits"]
-        if not set(keep).issubset(raw.columns):
-            keep = [raw.columns[i] for i in [1, 4, 6, 7, 15]]
     else:
+        dataset = fetch_ucirepo(id=dataset_id)
+        raw = dataset.data.features.copy()
+        target_raw = pd.to_numeric(dataset.data.targets.iloc[:, 0], errors="raise").astype(int)
         target = (target_raw.to_numpy() == 2).astype(np.int8)
         keep = ["Attribute2", "Attribute5", "Attribute7", "Attribute8", "Attribute16"]
 
@@ -194,8 +216,6 @@ def _compact_booster(model: xgb.XGBClassifier, temp_path: Path) -> dict[str, obj
 
 
 def train_taiwan_research_artifact(X: pd.DataFrame, y: np.ndarray, root: Path, benchmark: dict[str, object]) -> None:
-    # This is intentionally a separate research model. Its next-month revolving-credit target is
-    # not interchangeable with the LendingClub final-resolution personal-loan PD.
     model = xgb.XGBClassifier(
         n_estimators=160,
         max_depth=3,
