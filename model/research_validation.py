@@ -36,12 +36,23 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _ensure_lifecycle_source(source_model: Path) -> Path:
+    """Hydrate the checksum-verified public lifecycle source when CI cache is cold."""
+    from research_data import download_lifecycle_lendingclub
+
+    lifecycle = source_model / "data" / "loan_data_2007_2014.csv"
+    if not lifecycle.exists():
+        download_lifecycle_lendingclub(lifecycle)
+    return lifecycle
+
+
 def prepare_workspace(root: Path, workspace: Path) -> Path:
     """Create an isolated model workspace for validation-only retraining."""
     if workspace.exists():
         shutil.rmtree(workspace)
     workspace.mkdir(parents=True)
     source_model = root / "model"
+    _ensure_lifecycle_source(source_model)
     target_model = workspace / "model"
     shutil.copytree(
         source_model,
