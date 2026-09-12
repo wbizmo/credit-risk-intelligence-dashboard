@@ -72,6 +72,13 @@ jobs:
               delta = abs(float(retrained["metrics"][key]) - float(deployed["metrics"][key]))
               assert delta <= tolerance, (key, delta, tolerance)
               deltas[key] = delta
+
+          governance = retrained["training"]["governance"]
+          assert governance["populationConditioning"] == "granted-loans-only"
+          assert governance["rejectInference"]["supported"] is False
+          assert len(governance["featureProvenance"]) == len(retrained["featureNames"])
+          assert set(governance["uncertainty"]) == {"auc", "brier", "logLoss", "ks"}
+          assert governance["policyBacktests"]["approveAll"]["selectedCount"] == retrained["metrics"]["testSamples"]
           print("CRIX deployed-champion retrain validation passed", deltas)
           PY
           cp /tmp/crix-monoboost-v2.committed.json model/artifacts/crix-monoboost-v2.json
@@ -96,12 +103,6 @@ jobs:
           champion = json.loads(champion_path.read_text())
           champion_manifest = json.loads(champion_manifest_path.read_text())
           registry = json.loads((artifact_dir / "registry.json").read_text())
-          governance = champion["training"]["governance"]
-          assert governance["populationConditioning"] == "granted-loans-only"
-          assert governance["rejectInference"]["supported"] is False
-          assert len(governance["featureProvenance"]) == len(champion["featureNames"])
-          assert set(governance["uncertainty"]) == {"auc", "brier", "logLoss", "ks"}
-          assert governance["policyBacktests"]["approveAll"]["selectedCount"] == champion["metrics"]["testSamples"]
           assert "not a 12-month PD" in champion["target"]["horizon"]
           assert champion["trainedAt"] == "2026-09-08"
           assert verify_manifest(champion_path, champion_manifest)
