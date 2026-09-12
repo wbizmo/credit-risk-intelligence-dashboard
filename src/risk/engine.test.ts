@@ -104,10 +104,22 @@ describe("CRIX risk engine", () => {
     expect(high).toBeGreaterThanOrEqual(low);
   });
 
+  it("preserves monotonic requested-loan-to-income behavior for a representative case", () => {
+    const low = predictDefaultProbability({ ...baseline, loanAmount: 8_500 });
+    const high = predictDefaultProbability({ ...baseline, loanAmount: 55_000 });
+    expect(high).toBeGreaterThanOrEqual(low);
+  });
+
   it("preserves monotonic bureau-score behavior for a representative case", () => {
     const weak = predictDefaultProbability({ ...baseline, creditScore: 620 });
     const strong = predictDefaultProbability({ ...baseline, creditScore: 780 });
     expect(strong).toBeLessThanOrEqual(weak);
+  });
+
+  it("preserves monotonic employment-tenure behavior for a representative case", () => {
+    const short = predictDefaultProbability({ ...baseline, employmentYears: 0.5 });
+    const long = predictDefaultProbability({ ...baseline, employmentYears: 10 });
+    expect(long).toBeLessThanOrEqual(short);
   });
 
   it("rejects non-finite engine inputs even when called outside the HTTP validator", () => {
