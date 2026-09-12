@@ -42,9 +42,40 @@ jobs:
         run: pip install -r model/requirements.txt
       - name: Run fast model invariant suite under full environment
         run: python -m unittest discover -s model -p 'test_*.py' -v
+      - name: Preserve deployed champion bytes
+        run: cp model/artifacts/crix-monoboost-v2.json /tmp/crix-monoboost-v2.committed.json
       - name: Train real-data champion/challenger with governance gates
         run: python model/train.py
-      - name: Publish champion manifest and registry index
+      - name: Validate retrain against deployed champion and restore deployed bytes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          deployed = json.loads(Path("/tmp/crix-monoboost-v2.committed.json").read_text())
+          retrained = json.loads(Path("model/artifacts/crix-monoboost-v2.json").read_text())
+
+          for key in ("name", "version", "target", "featureNames", "monotoneConstraints"):
+              assert retrained[key] == deployed[key], key
+
+          assert retrained["metrics"]["testSamples"] == deployed["metrics"]["testSamples"]
+          tolerances = {
+              "auc": 1e-4,
+              "brier": 1e-4,
+              "logLoss": 1e-4,
+              "ks": 1e-4,
+              "challengerAuc": 1e-4,
+              "defaultRate": 1e-9,
+          }
+          deltas = {}
+          for key, tolerance in tolerances.items():
+              delta = abs(float(retrained["metrics"][key]) - float(deployed["metrics"][key]))
+              assert delta <= tolerance, (key, delta, tolerance)
+              deltas[key] = delta
+          print("CRIX deployed-champion retrain validation passed", deltas)
+          PY
+          cp /tmp/crix-monoboost-v2.committed.json model/artifacts/crix-monoboost-v2.json
+      - name: Publish deployed champion manifest and registry index
         run: python model/publish_champion_manifest.py
       - name: Train point-in-time research risk stack
         run: python model/train_risk_stack.py
@@ -72,6 +103,7 @@ jobs:
           assert set(governance["uncertainty"]) == {"auc", "brier", "logLoss", "ks"}
           assert governance["policyBacktests"]["approveAll"]["selectedCount"] == champion["metrics"]["testSamples"]
           assert "not a 12-month PD" in champion["target"]["horizon"]
+          assert champion["trainedAt"] == "2026-09-08"
           assert verify_manifest(champion_path, champion_manifest)
           assert champion_manifest["trainedAt"] == champion["trainedAt"]
           assert champion_manifest["trainingRunId"] == os.environ["CRIX_TRAINING_RUN_ID"]
