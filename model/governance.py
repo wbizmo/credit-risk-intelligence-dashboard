@@ -257,7 +257,8 @@ def population_stability_index(
         raise ValueError("psi inputs must be finite")
     points = np.unique(np.quantile(baseline, np.linspace(0, 1, bins + 1)))
     if len(points) == 1:
-        edges = np.array([-np.inf, points[0], np.inf])
+        pivot = points[0]
+        edges = np.array([-np.inf, pivot, np.nextafter(pivot, np.inf), np.inf])
     else:
         edges = np.concatenate(([-np.inf], points[1:-1], [np.inf]))
     expected_count, _ = np.histogram(baseline, bins=edges)
