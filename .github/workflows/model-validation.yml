@@ -17,7 +17,7 @@ concurrency:
 jobs:
   train-and-validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -25,18 +25,27 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: model/requirements.txt
-      - name: Restore immutable LendingClub source cache
+      - name: Restore immutable LendingClub granting source cache
         uses: actions/cache@v4
         with:
           path: model/data/LC_loans_granting_model_dataset.csv
           key: crix-lendingclub-b019384d6bc65bf2a3e839362e4ff502
+      - name: Restore immutable LendingClub lifecycle research source cache
+        uses: actions/cache@v4
+        with:
+          path: model/data/loan_data_2007_2014.csv
+          key: crix-lifecycle-43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545
       - name: Install model dependencies
         run: pip install -r model/requirements.txt
+      - name: Run fast model invariant suite under full environment
+        run: python -m unittest discover -s model -p 'test_*.py' -v
       - name: Train real-data champion/challenger with governance gates
         run: python model/train.py
       - name: Publish champion manifest and registry index
         run: python model/publish_champion_manifest.py
-      - name: Verify generated artifact carries governance and integrity evidence
+      - name: Train point-in-time research risk stack
+        run: python model/train_risk_stack.py
+      - name: Verify generated artifacts carry governance and integrity evidence
         run: |
           python - <<'PY'
           import json
@@ -46,30 +55,73 @@ jobs:
           sys.path.insert(0, "model")
           from registry import verify_manifest
 
-          artifact_path = Path("model/artifacts/crix-monoboost-v2.json")
-          manifest_path = Path("model/artifacts/crix-monoboost-v2.manifest.json")
-          artifact = json.loads(artifact_path.read_text())
-          manifest = json.loads(manifest_path.read_text())
-          registry = json.loads(Path("model/artifacts/registry.json").read_text())
-          governance = artifact["training"]["governance"]
+          artifact_dir = Path("model/artifacts")
+          champion_path = artifact_dir / "crix-monoboost-v2.json"
+          champion_manifest_path = artifact_dir / "crix-monoboost-v2.manifest.json"
+          champion = json.loads(champion_path.read_text())
+          champion_manifest = json.loads(champion_manifest_path.read_text())
+          registry = json.loads((artifact_dir / "registry.json").read_text())
+          governance = champion["training"]["governance"]
           assert governance["populationConditioning"] == "granted-loans-only"
           assert governance["rejectInference"]["supported"] is False
-          assert len(governance["featureProvenance"]) == len(artifact["featureNames"])
+          assert len(governance["featureProvenance"]) == len(champion["featureNames"])
           assert set(governance["uncertainty"]) == {"auc", "brier", "logLoss", "ks"}
-          assert governance["policyBacktests"]["approveAll"]["selectedCount"] == artifact["metrics"]["testSamples"]
-          assert "not a 12-month PD" in artifact["target"]["horizon"]
-          assert verify_manifest(artifact_path, manifest)
-          assert manifest["modelId"] == "CRIX-MonoBoost@2.0.0"
-          assert registry["models"]["CRIX-MonoBoost@2.0.0"]["artifactSha256"] == manifest["artifactSha256"]
-          print("CRIX model-governance and registry artifact gate passed")
-          print("CRIX_RUNTIME_MANIFEST=" + json.dumps(manifest, sort_keys=True, separators=(",", ":")))
+          assert governance["policyBacktests"]["approveAll"]["selectedCount"] == champion["metrics"]["testSamples"]
+          assert "not a 12-month PD" in champion["target"]["horizon"]
+          assert verify_manifest(champion_path, champion_manifest)
+
+          expected = {
+              "CRIX-MonoBoost@2.0.0": "crix-monoboost-v2",
+              "CRIX-LifetimePD@1.0.0": "crix-lifetime-pd-v1",
+              "CRIX-Transitions-Taiwan@1.0.0": "crix-transitions-taiwan-v1",
+              "CRIX-EAD-Installment@1.0.0": "crix-ead-installment-v1",
+              "CRIX-CCF-Taiwan@1.0.0": "crix-ccf-taiwan-v1",
+              "CRIX-LGD@1.0.0": "crix-lgd-v1",
+          }
+          assert set(expected).issubset(registry["models"])
+          for model_id, stem in expected.items():
+              entry = registry["models"][model_id]
+              artifact_path = Path(entry["artifact"])
+              manifest_path = Path(entry["manifest"])
+              manifest = json.loads(manifest_path.read_text())
+              assert verify_manifest(artifact_path, manifest), model_id
+              assert manifest["artifactSha256"] == entry["artifactSha256"]
+
+          survival = json.loads((artifact_dir / "crix-lifetime-pd-v1.json").read_text())
+          assert survival["target"]["maxHorizonMonths"] == 36
+          assert survival["target"]["censoring"]
+          assert "interest" not in " ".join(survival["model"]["featureNames"]).lower()
+
+          transitions = json.loads((artifact_dir / "crix-transitions-taiwan-v1.json").read_text())
+          for row in transitions["matrix"]:
+              assert abs(sum(row) - 1.0) < 1e-10
+          assert transitions["nonDefaultOctoberState"] == "not-fabricated"
+
+          ead = json.loads((artifact_dir / "crix-ead-installment-v1.json").read_text())
+          lgd = json.loads((artifact_dir / "crix-lgd-v1.json").read_text())
+          ccf = json.loads((artifact_dir / "crix-ccf-taiwan-v1.json").read_text())
+          assert "remains unchanged" in ead["v3RuntimeBaseline"]
+          assert lgd["discountRate"] == 0.0 and "aggregate-only" in lgd["recoveryTimingSupport"]
+          assert "not pure draw CCF" in ccf["warning"]
+          assert (artifact_dir / "snapshot-v3-retrospective.json").is_file()
+          assert Path("model/RISK_STACK_REPORT.md").is_file()
+
+          print("CRIX full model-governance, registry and research risk-stack gate passed")
+          print("CRIX_RUNTIME_MANIFEST=" + json.dumps(champion_manifest, sort_keys=True, separators=(",", ":")))
           print("CRIX_REGISTRY_INDEX=" + json.dumps(registry, sort_keys=True, separators=(",", ":")))
           PY
-      - name: Upload registry evidence
+      - name: Upload full risk-stack evidence
         uses: actions/upload-artifact@v4
         with:
-          name: crix-champion-registry-${{ github.run_id }}
+          name: crix-risk-stack-${{ github.run_id }}
           path: |
-            model/artifacts/crix-monoboost-v2.manifest.json
+            model/artifacts/*.manifest.json
             model/artifacts/registry.json
+            model/artifacts/crix-lifetime-pd-v1.json
+            model/artifacts/crix-transitions-taiwan-v1.json
+            model/artifacts/crix-ead-installment-v1.json
+            model/artifacts/crix-ccf-taiwan-v1.json
+            model/artifacts/crix-lgd-v1.json
+            model/artifacts/snapshot-*.json
+            model/RISK_STACK_REPORT.md
           if-no-files-found: error
