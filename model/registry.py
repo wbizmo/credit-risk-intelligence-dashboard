@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 
@@ -49,6 +50,8 @@ def build_manifest(
     model_card: str,
     report: str,
     parent: str | None = None,
+    trained_at: str | None = None,
+    training_run_id: str | None = None,
 ) -> dict[str, object]:
     if not model_id or not model_name or not version:
         raise ValueError("model identity is required")
@@ -56,6 +59,8 @@ def build_manifest(
         raise FileNotFoundError(artifact_path)
     if status not in {"research", "challenger", "approved-demo-champion", "retired"}:
         raise ValueError(f"unsupported model status: {status}")
+    resolved_trained_at = trained_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    resolved_run_id = training_run_id or os.environ.get("CRIX_TRAINING_RUN_ID") or os.environ.get("GITHUB_RUN_ID") or "local"
     return {
         "manifestSchemaVersion": 1,
         "modelId": model_id,
@@ -64,6 +69,8 @@ def build_manifest(
         "artifactSchemaVersion": artifact_schema_version,
         "product": product,
         "target": dict(target),
+        "trainedAt": resolved_trained_at,
+        "trainingRunId": str(resolved_run_id),
         "gitCommit": git_commit,
         "datasets": [dict(item) for item in datasets],
         "featureContractVersion": feature_contract_version,
@@ -111,6 +118,12 @@ def update_registry_index(index_path: Path, entry: Mapping[str, object]) -> None
         raise ValueError("invalid registry index schema")
 
     models: dict[str, object] = current["models"]
+    existing_by_id = models.get(str(model_id))
+    if isinstance(existing_by_id, dict):
+        identity = (existing_by_id.get("modelName"), existing_by_id.get("version"), existing_by_id.get("artifactSha256"))
+        if identity != (model_name, version, digest):
+            raise ValueError("existing modelId cannot be rebound to different identity or artifact bytes")
+
     for existing in models.values():
         if not isinstance(existing, dict):
             raise ValueError("invalid registry entry")
