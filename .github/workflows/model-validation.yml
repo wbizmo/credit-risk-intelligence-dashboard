@@ -84,9 +84,14 @@ jobs:
           cp /tmp/crix-monoboost-v2.committed.json model/artifacts/crix-monoboost-v2.json
       - name: Publish deployed champion manifest and registry index
         run: python model/publish_champion_manifest.py
-      - name: Train point-in-time research risk stack
-        run: python model/train_risk_stack.py
-      - name: Verify generated artifacts carry governance and integrity evidence
+      - name: Validate point-in-time research risk stack without rebinding immutable versions
+        run: |
+          python model/research_validation.py prepare --workspace /tmp/crix-risk-stack-validation
+          python /tmp/crix-risk-stack-validation/model/train_risk_stack.py --no-download
+          python model/research_validation.py compare \
+            --generated /tmp/crix-risk-stack-validation/model/artifacts \
+            --report model/artifacts/research-retrain-validation.json
+      - name: Verify published artifacts carry governance and integrity evidence
         run: |
           python - <<'PY'
           import json
@@ -126,8 +131,13 @@ jobs:
               manifest = json.loads(manifest_path.read_text())
               assert verify_manifest(artifact_path, manifest), model_id
               assert manifest["artifactSha256"] == entry["artifactSha256"]
-              assert manifest["trainingRunId"] == os.environ["CRIX_TRAINING_RUN_ID"]
-              assert manifest["gitCommit"] == os.environ["CRIX_TRAINING_GIT_SHA"]
+              if model_id == "CRIX-MonoBoost@2.0.0":
+                  assert manifest["trainingRunId"] == os.environ["CRIX_TRAINING_RUN_ID"]
+                  assert manifest["gitCommit"] == os.environ["CRIX_TRAINING_GIT_SHA"]
+              else:
+                  assert manifest["status"] == "research"
+                  assert manifest["trainingRunId"]
+                  assert manifest["gitCommit"]
 
           survival = json.loads((artifact_dir / "crix-lifetime-pd-v1.json").read_text())
           assert survival["target"]["maxHorizonMonths"] == 36
@@ -146,9 +156,10 @@ jobs:
           assert lgd["discountRate"] == 0.0 and "aggregate-only" in lgd["recoveryTimingSupport"]
           assert "not pure draw CCF" in ccf["warning"]
           assert (artifact_dir / "snapshot-v3-retrospective.json").is_file()
+          assert (artifact_dir / "research-retrain-validation.json").is_file()
           assert Path("model/RISK_STACK_REPORT.md").is_file()
 
-          print("CRIX full model-governance, registry and research risk-stack gate passed")
+          print("CRIX full model-governance, immutable registry and research retrain gate passed")
           print("CRIX_RUNTIME_MANIFEST=" + json.dumps(champion_manifest, sort_keys=True, separators=(",", ":")))
           print("CRIX_REGISTRY_INDEX=" + json.dumps(registry, sort_keys=True, separators=(",", ":")))
           PY
@@ -160,6 +171,7 @@ jobs:
             model/artifacts/crix-monoboost-v2.json
             model/artifacts/*.manifest.json
             model/artifacts/registry.json
+            model/artifacts/research-retrain-validation.json
             model/artifacts/crix-lifetime-pd-v1.json
             model/artifacts/crix-transitions-taiwan-v1.json
             model/artifacts/crix-ead-installment-v1.json

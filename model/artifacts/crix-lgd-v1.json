@@ -1,37 +1,12 @@
 {
-  "baseline": {
-    "alpha": 10.0,
-    "coefficients": [
-      0.023134969337219057,
-      0.0568076371502363,
-      0.009126280768888231,
-      0.014783634177433905,
-      -0.013896771334857577
-    ],
-    "intercept": 0.9486468419712064,
-    "means": [
-      0.201779698758716,
-      0.23068004449680596,
-      695.6889077207909,
-      6.380045593219918,
-      0.9415666912133762
-    ],
-    "method": "ridge",
-    "scales": [
-      0.08514324361253224,
-      0.11030774553429855,
-      29.24858316816872,
-      3.5292598405406744,
-      0.10418116218824179
-    ]
-  },
   "discountRate": 0.0,
   "featureNames": [
     "debtToIncome",
     "loanToIncome",
-    "creditScore",
     "employmentYears",
-    "eadRatio"
+    "termMonths",
+    "durationMonths",
+    "observedEadRate"
   ],
   "metrics": {
     "baselineExposureWeightedMae": 0.07655523452568232,
@@ -43,17 +18,56 @@
     "testDefaults": 27833,
     "trainDefaults": 13806
   },
-  "name": "CRIX-LGD",
-  "nonlinearChallenger": {
-    "maxIter": 150,
-    "maxLeafNodes": 15,
-    "method": "hist-gradient-boosting",
-    "promotionDecision": "baseline-ridge-kept-because-challenger-OOT-MAE-is-worse"
+  "models": {
+    "baseline": {
+      "metrics": {
+        "mae": 0.07751359013243322,
+        "rmse": 0.0907322589597643
+      },
+      "model": {
+        "alpha": 10.0,
+        "coefficients": [
+          -0.0008474587284251087,
+          0.0017741867735320963,
+          -0.00011518902276963631,
+          0.0027485139469208557,
+          -0.014503430392958495,
+          -0.00247891523712218
+        ],
+        "intercept": 0.9162276944927469,
+        "means": [
+          0.16083822975517892,
+          0.23137514765607517,
+          5.513617267854556,
+          43.975662755323775,
+          18.795233956250904,
+          0.6479669675247459
+        ],
+        "method": "ridge",
+        "scales": [
+          0.07394307767128448,
+          0.12477405324474654,
+          3.50660517808265,
+          11.305074512850933,
+          10.273516168423813,
+          0.23903967593303765
+        ]
+      }
+    },
+    "challenger": {
+      "metrics": {
+        "mae": 0.07841761231863775,
+        "rmse": 0.09251509328432675
+      },
+      "name": "hist-gradient-boosting"
+    },
+    "recommended": "baseline"
   },
+  "name": "CRIX-LGD",
   "product": "unsecured-personal-loan",
-  "recoveryTimingSupport": "aggregate-only; dated recovery cashflows unavailable, so no recovery-delay discounting is claimed",
+  "recoveryTimingSupport": "aggregate-only; source does not provide dated recovery cashflows, so recovery dates are not fabricated",
   "schemaVersion": 1,
-  "target": "(EAD - (recoveries - collection_recovery_fee)) / EAD",
-  "targetPolicy": "No silent [0,1] clamp; negative LGD and LGD > 1 remain valid under net-economic-recovery convention.",
+  "target": "LGD = (EAD - (recoveries - collection_recovery_fee)) / EAD",
+  "v3RuntimeBaseline": "CRIX v3 engineering LGD remains unchanged and separately versioned",
   "version": "1.0.0"
 }

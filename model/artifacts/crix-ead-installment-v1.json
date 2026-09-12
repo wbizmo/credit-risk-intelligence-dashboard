@@ -1,10 +1,10 @@
 {
   "featureNames": [
-    "monthIndex",
-    "installment",
-    "annualInterestRate",
-    "fundedPrincipal",
-    "termMonths"
+    "debtToIncome",
+    "loanToIncome",
+    "employmentYears",
+    "termMonths",
+    "durationMonths"
   ],
   "metrics": {
     "baselineDollarMae": 722.3091099146827,
@@ -12,30 +12,57 @@
     "testDefaults": 27833,
     "trainDefaults": 13806
   },
-  "name": "CRIX-EAD-Installment",
-  "nonlinearChallenger": {
-    "featureNames": [
-      "baselineContractualBalance",
-      "progress",
-      "annualInterestRate",
-      "fundedPrincipal"
-    ],
-    "maxIter": 150,
-    "maxLeafNodes": 15,
-    "method": "hist-gradient-boosting-residual"
+  "models": {
+    "baseline": {
+      "metrics": {
+        "mae": 0.046872491149481554,
+        "rmse": 0.06524911976080272
+      },
+      "model": {
+        "alpha": 10.0,
+        "coefficients": [
+          -0.0004154645595366825,
+          0.0026895273027617785,
+          -0.0014126684906923088,
+          0.10494202020497068,
+          -0.21453123361237927
+        ],
+        "intercept": 0.647966967524746,
+        "means": [
+          0.16083822975517892,
+          0.23137514765607517,
+          5.513617267854556,
+          43.975662755323775,
+          18.795233956250904
+        ],
+        "method": "ridge",
+        "scales": [
+          0.07394307767128448,
+          0.12477405324474654,
+          3.50660517808265,
+          11.305074512850933,
+          10.273516168423813
+        ]
+      }
+    },
+    "challenger": {
+      "metrics": {
+        "mae": 0.022408146664943143,
+        "rmse": 0.04922378241121968
+      },
+      "name": "hist-gradient-boosting"
+    },
+    "recommended": "challenger"
   },
+  "name": "CRIX-EAD-Installment",
   "product": "unsecured-personal-loan",
   "schemaVersion": 1,
-  "target": "observed funded principal less total principal received, evaluated on defaulted loans",
-  "version": "1.0.0",
-  "warning": "Resolution-date proxy, not an exact default-date exposure. Prepayment timing and exact default date are unavailable.",
-  "baseline": {
-    "method": "contractual-amortization-balance",
-    "rules": [
-      "scheduled installment is treated as end-of-period",
-      "zero-rate loans amortize linearly",
-      "observed proxy target is max(0, fundedPrincipal - totalPrincipalReceived)"
-    ]
-  },
-  "v3RuntimeBaseline": "Current /api/v3 remains unchanged: EAD = requested loanAmount."
+  "target": "principal exposure proxy at default = max(funded_amnt - total_rec_prncp, 0)",
+  "targetBounds": [
+    0,
+    1
+  ],
+  "targetScale": "EAD / funded amount; predictions explicitly bounded to [0,1] for closed-end principal exposure",
+  "v3RuntimeBaseline": "ead = requested loanAmount remains unchanged in /api/v3",
+  "version": "1.0.0"
 }

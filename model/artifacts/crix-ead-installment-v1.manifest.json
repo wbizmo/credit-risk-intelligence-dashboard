@@ -4,9 +4,11 @@
   "datasets": [
     {
       "id": "lendingclub-lifecycle-2007-2014-mirror",
-      "license": "mirror-provenance-documented-research-only",
+      "license": "MIT (mirror metadata; underlying LendingClub provenance retained as research limitation)",
       "product": "unsecured-personal-loan",
-      "sha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545"
+      "sourceRows": 466285,
+      "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+      "usableRows": 445252
     }
   ],
   "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
@@ -27,16 +29,19 @@
   "randomSeed": 42,
   "report": "model/RISK_STACK_REPORT.md",
   "split": {
-    "test": "issue_d >= 2013-01-01",
-    "train": "issue_d < 2013-01-01"
+    "testLabelsAsOf": "2016-12-31",
+    "testOriginationsAfter": "2012-12-31",
+    "trainLabelsAsOf": "2015-12-31",
+    "trainOriginationsThrough": "2012-12-31"
   },
   "status": "research",
   "target": {
-    "definition": "observed funded principal less total principal received, evaluated on defaulted loans",
+    "definition": "principal exposure proxy at default = max(funded_amnt - total_rec_prncp, 0)",
+    "horizon": "conditional on default month proxy",
     "name": "exposureAtDefaultProxy"
   },
-  "trainedAt": "2026-09-12T21:53:04+00:00",
-  "trainingConfigHash": "99b09159568be4103552e5bd9ea10a4cf9eb97fc7a7648d3594d075b4c6efcb6",
+  "trainedAt": "2026-09-12T21:53:02+00:00",
+  "trainingConfigHash": "3ca72c508874e5a25ad2b7393c1f699a3dc931c6098655c3d0413c6c0b993805",
   "trainingRunId": "34721148952",
   "version": "1.0.0"
 }

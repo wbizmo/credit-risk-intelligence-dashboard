@@ -4,9 +4,11 @@
   "datasets": [
     {
       "id": "lendingclub-lifecycle-2007-2014-mirror",
-      "license": "mirror-provenance-documented-research-only",
+      "license": "MIT (mirror metadata; underlying LendingClub provenance retained as research limitation)",
       "product": "unsecured-personal-loan",
-      "sha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545"
+      "sourceRows": 466285,
+      "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+      "usableRows": 445252
     }
   ],
   "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
@@ -14,76 +16,46 @@
   "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
   "manifestSchemaVersion": 1,
   "metrics": {
-    "12m": {
-      "auc": 0.5685028462878193,
-      "averagePd": 0.06488516782528668,
-      "brier": 0.04659565477939919,
-      "events": 2513,
-      "observedRate": 0.04885113331518992,
-      "samples": 51442,
-      "status": "ok"
-    },
-    "24m": {
-      "auc": 0.5844786782605772,
-      "averagePd": 0.14054953115698376,
-      "brier": 0.09765073433334201,
-      "events": 5637,
-      "observedRate": 0.10957972085066676,
-      "samples": 51442,
-      "status": "ok"
-    },
-    "36m": {
-      "auc": 0.5906905982180888,
-      "averagePd": 0.207912269479437,
-      "brier": 0.128520714309473,
-      "events": 7659,
-      "observedRate": 0.14892375896867527,
-      "samples": 51429,
-      "status": "ok"
-    },
-    "3m": {
-      "auc": 0.5230682216834333,
-      "averagePd": 0.006555756485667571,
-      "brier": 0.003938280259374426,
-      "events": 203,
-      "observedRate": 0.003946191827689437,
-      "samples": 51442,
-      "status": "ok"
-    },
-    "6m": {
-      "auc": 0.5277953538212743,
-      "averagePd": 0.022555589881720732,
-      "brier": 0.015995250768132692,
-      "events": 834,
-      "observedRate": 0.016212433420162514,
-      "samples": 51442,
-      "status": "ok"
-    }
+    "decisionSamples": 51442,
+    "events": 2996,
+    "trainingLoans": 19306
   },
   "modelCard": "MODEL_CARD.md",
   "modelId": "CRIX-LifetimePD@1.0.0",
   "modelName": "CRIX-LifetimePD",
-  "parent": "CRIX-MonoBoost@2.0.0",
+  "parent": null,
   "product": "unsecured-personal-loan",
   "randomSeed": 42,
   "report": "model/RISK_STACK_REPORT.md",
   "split": {
-    "calibrationLabelsAsOf": "2015-12-31",
-    "calibrationOriginationsEnd": "2011-12-31",
-    "decisionEnd": "2012-12-31",
+    "counts": {
+      "calibration": 18946,
+      "decision": 51442,
+      "evaluable": 445252,
+      "train": 19306
+    },
+    "featureContractVersion": "lifecycle-origination-v1",
     "mode": "point-in-time",
-    "outcomeCutoff": "2016-12-31",
-    "trainLabelsAsOf": "2014-12-31",
-    "trainOriginationsEnd": "2010-12-31"
+    "snapshotId": "0ae28703d851371670f3afc2",
+    "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+    "windows": {
+      "calibrationLabelsAsOf": "2015-12-31",
+      "calibrationOriginationsEnd": "2011-12-31",
+      "decisionEnd": "2012-12-31",
+      "outcomeCutoff": "2016-12-31",
+      "trainLabelsAsOf": "2014-12-31",
+      "trainOriginationsEnd": "2010-12-31"
+    }
   },
   "status": "research",
   "target": {
-    "definition": "discrete-time monthly default hazard with right censoring",
+    "censoring": "fully-paid loans are competing terminal non-default outcomes; unresolved statuses are right-censored at last_credit_pull_d",
+    "definition": "Discrete-time hazard of charged-off/default resolution; last_pymnt_d is used as an endpoint proxy, not claimed to be an exact charge-off date.",
     "maxHorizonMonths": 36,
-    "name": "lifetimeDefaultHazard"
+    "name": "timeToResolvedDefaultProxy"
   },
-  "trainedAt": "2026-09-12T21:53:03+00:00",
-  "trainingConfigHash": "2f53ff53c006982657f2f1fe3e0c7b09902c04a9c7f63d0445ca0e10fa6d259",
+  "trainedAt": "2026-09-12T21:53:02+00:00",
+  "trainingConfigHash": "73eccb4198d70c2ae95e1a81fb5015e218ce6a95e2eb3422e7c5bc618b09a1cb",
   "trainingRunId": "34721148952",
   "version": "1.0.0"
 }

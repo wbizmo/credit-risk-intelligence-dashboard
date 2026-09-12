@@ -1,10 +1,36 @@
 {
-  "calibration": {
-    "intercept": 0.6837161490080222,
-    "method": "platt-on-person-period-hazard",
-    "slope": 1.336757157897873
+  "exampleMedianBorrower": {
+    "features": {
+      "debtToIncome": 0.1295,
+      "employmentYears": 4.0,
+      "loanToIncome": 0.15265719058917432
+    },
+    "termStructure": {
+      "pd12m": 0.05480454915141675,
+      "pd24m": 0.11971865574708584,
+      "pd36m": 0.17849137402551118,
+      "pd3m": 0.005500512302805793,
+      "pd6m": 0.018961421766918396
+    }
   },
-  "horizonMetrics": {
+  "featureProvenance": [
+    {
+      "availability": "origination",
+      "feature": "debtToIncome",
+      "source": "dti"
+    },
+    {
+      "availability": "origination",
+      "feature": "loanToIncome",
+      "source": "loan_amnt / annual_inc"
+    },
+    {
+      "availability": "origination",
+      "feature": "employmentYears",
+      "source": "emp_length"
+    }
+  ],
+  "metrics": {
     "12m": {
       "auc": 0.5685028462878193,
       "averagePd": 0.06488516782528668,
@@ -52,41 +78,77 @@
     }
   },
   "model": {
-    "coefficients": [
-      0.08871037010653368,
-      0.4416663423511041,
-      -0.0021712966314039205,
-      0.09917216863501153
+    "ageBucketEnds": [
+      3,
+      6,
+      12,
+      18,
+      24,
+      36
     ],
+    "coefficients": [
+      0.06158611543292348,
+      0.17019079290590927,
+      0.04233452413167204,
+      -1.6902034156297194,
+      -0.7843367466914148,
+      -0.4719169163760526,
+      -0.5106349652858906,
+      -0.5239214915798842,
+      -0.5465923903350624
+    ],
+    "events": 2996,
     "featureNames": [
       "debtToIncome",
       "loanToIncome",
-      "employmentYears",
-      "monthIndexNormalized"
+      "employmentYears"
     ],
-    "intercept": -3.8789555331743943,
+    "intercept": -4.568590600804079,
+    "maxHorizonMonths": 36,
     "means": [
-      0.16048915726526952,
-      0.16727883187698958,
-      6.1844865073792925,
-      0.5009950306740403
+      0.128434258779654,
+      0.17381140927959082,
+      4.571635760903346
     ],
     "method": "discrete-time-logistic-hazard",
+    "personPeriods": 515640,
     "scales": [
-      0.06508948515965836,
-      0.08957670967693725,
-      3.5277167713971207,
-      0.2954052036475721
-    ]
+      0.06716959916792517,
+      0.10896998550624162,
+      3.459840698036461
+    ],
+    "seed": 42,
+    "trainingLoans": 19306
   },
   "name": "CRIX-LifetimePD",
+  "populationConditioning": "historically-granted-LendingClub-loans",
   "product": "unsecured-personal-loan",
   "schemaVersion": 1,
+  "snapshot": {
+    "counts": {
+      "calibration": 18946,
+      "decision": 51442,
+      "evaluable": 445252,
+      "train": 19306
+    },
+    "featureContractVersion": "lifecycle-origination-v1",
+    "mode": "point-in-time",
+    "snapshotId": "0ae28703d851371670f3afc2",
+    "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+    "windows": {
+      "calibrationLabelsAsOf": "2015-12-31",
+      "calibrationOriginationsEnd": "2011-12-31",
+      "decisionEnd": "2012-12-31",
+      "outcomeCutoff": "2016-12-31",
+      "trainLabelsAsOf": "2014-12-31",
+      "trainOriginationsEnd": "2010-12-31"
+    }
+  },
   "target": {
-    "censoring": "right-censored at last_pymnt_d/event proxy, min(term,36m) or dataset cutoff",
-    "event": "charged-off/default final status; last_pymnt_d is terminal/event-date proxy because exact charge-off date is unavailable",
+    "censoring": "fully-paid loans are competing terminal non-default outcomes; unresolved statuses are right-censored at last_credit_pull_d",
+    "definition": "Discrete-time hazard of charged-off/default resolution; last_pymnt_d is used as an endpoint proxy, not claimed to be an exact charge-off date.",
     "maxHorizonMonths": 36,
-    "prediction": "monthly conditional hazard, survival, marginal PD and cumulative PD"
+    "name": "timeToResolvedDefaultProxy"
   },
   "version": "1.0.0"
 }
