@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Literal, Sequence
+from typing import Literal, Mapping, Sequence
 
 import numpy as np
 
@@ -268,6 +268,46 @@ def population_stability_index(
     return float(np.sum((actual_share - expected_share) * np.log(actual_share / expected_share)))
 
 
+def segment_diagnostics(
+    y_true: np.ndarray,
+    probability: np.ndarray,
+    segments: np.ndarray,
+    *,
+    min_count: int = 500,
+    min_events: int = 20,
+) -> list[dict[str, object]]:
+    y, p = _validated_binary_arrays(y_true, probability)
+    labels = np.asarray(segments).reshape(-1)
+    if len(labels) != len(y):
+        raise ValueError("segment labels must align to outcomes")
+    rows: list[dict[str, object]] = []
+    for raw_label in np.unique(labels.astype(str)):
+        mask = labels.astype(str) == raw_label
+        count = int(mask.sum())
+        events = int(y[mask].sum())
+        non_events = count - events
+        supported = count >= min_count and events >= min_events and non_events >= min_events
+        row: dict[str, object] = {
+            "segment": raw_label,
+            "count": count,
+            "events": events,
+            "observedDefaultRate": float(y[mask].mean()),
+            "averagePd": float(p[mask].mean()),
+            "brier": float(np.mean((p[mask] - y[mask]) ** 2)),
+            "status": "ok" if supported else "insufficient-data",
+        }
+        if supported:
+            row["auc"] = _auc(y[mask], p[mask])
+            row["ks"] = _ks(y[mask], p[mask])
+            row["calibration"] = calibration_intercept_slope(y[mask], p[mask])
+        else:
+            row["auc"] = None
+            row["ks"] = None
+            row["calibration"] = None
+        rows.append(row)
+    return rows
+
+
 def backtest_pd_policy(
     y_true: np.ndarray,
     probability: np.ndarray,
@@ -299,4 +339,68 @@ def backtest_pd_policy(
         "predictedDefaultExposure": float(np.sum(p[selected] * ead[selected])),
         "observedDefaultExposure": float(np.sum(y[selected] * ead[selected])),
         "pdThreshold": pd_threshold,
+    }
+
+
+def build_governance_evidence(
+    y_calibration: np.ndarray,
+    p_calibration: np.ndarray,
+    y_test: np.ndarray,
+    p_test: np.ndarray,
+    exposure_test: np.ndarray,
+    *,
+    feature_names: Sequence[str],
+    segments: Mapping[str, np.ndarray] | None = None,
+    bootstrap_samples: int = 500,
+    min_segment_count: int = 500,
+) -> dict[str, object]:
+    validated = validate_feature_provenance(PRIMARY_FEATURE_PROVENANCE, feature_names)
+    y_cal, p_cal = _validated_binary_arrays(y_calibration, p_calibration)
+    y_oot, p_oot = _validated_binary_arrays(y_test, p_test)
+    if len(y_cal) == 0 or len(y_oot) == 0:
+        raise ValueError("governance evidence requires calibration and out-of-time observations")
+
+    uncertainty = {
+        metric: bootstrap_metric_interval(
+            y_oot,
+            p_oot,
+            metric=metric,
+            samples=bootstrap_samples,
+            seed=42,
+        )
+        for metric in ("auc", "brier", "logLoss", "ks")
+    }
+    segment_output = {
+        name: segment_diagnostics(
+            y_oot,
+            p_oot,
+            values,
+            min_count=min_segment_count,
+            min_events=max(1, min_segment_count // 20),
+        )
+        for name, values in (segments or {}).items()
+    }
+
+    return {
+        "populationConditioning": POPULATION_CONDITIONING,
+        "rejectInference": {
+            "supported": False,
+            "method": None,
+            "reason": "The primary LendingClub cohort contains outcomes for granted loans only; rejected-applicant outcomes are not fabricated.",
+        },
+        "featureProvenance": [validated[name].to_dict() for name in feature_names],
+        "calibration": {
+            "interceptSlope": calibration_intercept_slope(y_oot, p_oot),
+            "bins": calibration_by_bins(y_oot, p_oot, bins=10, min_count=min_segment_count, min_events=1),
+        },
+        "uncertainty": uncertainty,
+        "stability": {
+            "calibrationToTestPdPsi": population_stability_index(p_cal, p_oot, bins=10),
+        },
+        "segments": segment_output,
+        "policyBacktests": {
+            "approveAll": backtest_pd_policy(y_oot, p_oot, exposure_test, pd_threshold=1.0),
+            "pd20": backtest_pd_policy(y_oot, p_oot, exposure_test, pd_threshold=0.20),
+            "pd35": backtest_pd_policy(y_oot, p_oot, exposure_test, pd_threshold=0.35),
+        },
     }
