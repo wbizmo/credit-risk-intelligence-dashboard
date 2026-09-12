@@ -14,7 +14,7 @@ MODEL_ID = "CRIX-MonoBoost@2.0.0"
 
 
 def git_commit(root: Path) -> str:
-    supplied = os.environ.get("CRIX_TRAINING_GIT_SHA") or os.environ.get("GITHUB_SHA")
+    supplied = os.environ.get("CRIX_TRAINING_GIT_SHA") or os.environ.get("GITHUB_HEAD_SHA") or os.environ.get("GITHUB_SHA")
     if supplied:
         return supplied
     try:
@@ -80,6 +80,7 @@ def main() -> None:
         model_card="MODEL_CARD.md",
         report="model/TRAINING_REPORT.md",
         parent=None,
+        trained_at=artifact["trainedAt"],
     )
     atomic_json(manifest_path, manifest)
     update_registry_index(registry_path, {
