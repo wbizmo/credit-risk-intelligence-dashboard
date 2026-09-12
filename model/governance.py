@@ -45,6 +45,8 @@ def validate_feature_provenance(
             raise ValueError(f"duplicate provenance for feature: {item.feature}")
         if item.outcome_derived:
             raise ValueError(f"outcome-derived feature cannot enter the predictor contract: {item.feature}")
+        if item.policy_derived:
+            raise ValueError(f"policy-derived feature cannot enter the predictor contract: {item.feature}")
         if item.max_lookback_days is not None and item.max_lookback_days < 0:
             raise ValueError(f"negative feature lookback is invalid: {item.feature}")
         by_name[item.feature] = item
@@ -78,15 +80,15 @@ def assert_point_in_time(
 
 
 def _validated_binary_arrays(y_true: np.ndarray, probability: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    y = np.asarray(y_true, dtype=np.int8).reshape(-1)
+    raw_y = np.asarray(y_true).reshape(-1)
     p = np.asarray(probability, dtype=float).reshape(-1)
-    if len(y) == 0 or len(y) != len(p):
+    if len(raw_y) == 0 or len(raw_y) != len(p):
         raise ValueError("outcome and probability arrays must be non-empty and equal length")
     if not np.isfinite(p).all() or ((p < 0) | (p > 1)).any():
         raise ValueError("probabilities must be finite and within [0, 1]")
-    if not np.isin(y, [0, 1]).all():
+    if not np.isin(raw_y, [0, 1]).all():
         raise ValueError("outcomes must be binary")
-    return y, p
+    return raw_y.astype(np.int8, copy=False), p
 
 
 def calibration_by_bins(
@@ -220,16 +222,19 @@ def bootstrap_metric_interval(
     y, p = _validated_binary_arrays(y_true, probability)
     if samples < 20 or not 0 < confidence < 1:
         raise ValueError("bootstrap requires at least 20 samples and confidence within (0, 1)")
+    positive_index = np.flatnonzero(y == 1)
+    negative_index = np.flatnonzero(y == 0)
+    if len(positive_index) == 0 or len(negative_index) == 0:
+        raise ValueError("bootstrap requires both outcome classes")
+
     rng = np.random.default_rng(seed)
     values: list[float] = []
     for _ in range(samples):
-        index = rng.integers(0, len(y), len(y))
-        sample_y = y[index]
-        if metric in {"auc", "ks"} and len(np.unique(sample_y)) != 2:
-            continue
-        values.append(_metric(sample_y, p[index], metric))
-    if len(values) < max(10, samples // 2):
-        raise ValueError("too few valid bootstrap resamples")
+        positive_sample = rng.choice(positive_index, size=len(positive_index), replace=True)
+        negative_sample = rng.choice(negative_index, size=len(negative_index), replace=True)
+        index = np.concatenate((positive_sample, negative_sample))
+        values.append(_metric(y[index], p[index], metric))
+
     alpha = (1 - confidence) / 2
     return {
         "metric": metric,
@@ -239,6 +244,7 @@ def bootstrap_metric_interval(
         "confidence": confidence,
         "samples": len(values),
         "seed": seed,
+        "resampling": "stratified-by-outcome-class",
     }
 
 
@@ -280,9 +286,10 @@ def segment_diagnostics(
     labels = np.asarray(segments).reshape(-1)
     if len(labels) != len(y):
         raise ValueError("segment labels must align to outcomes")
+    label_strings = labels.astype(str)
     rows: list[dict[str, object]] = []
-    for raw_label in np.unique(labels.astype(str)):
-        mask = labels.astype(str) == raw_label
+    for raw_label in np.unique(label_strings):
+        mask = label_strings == raw_label
         count = int(mask.sum())
         events = int(y[mask].sum())
         non_events = count - events
