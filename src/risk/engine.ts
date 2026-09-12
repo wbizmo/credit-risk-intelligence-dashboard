@@ -1,5 +1,14 @@
 import rawArtifact from "../../model/artifacts/crix-monoboost-v2.json";
-import type { ApplicationInput, Decision, ReasonCode, RiskResult, StressResult, StressSeverity } from "./types";
+import type {
+  ApplicationInput,
+  Counterfactual,
+  Decision,
+  PolicyReason,
+  ReasonCode,
+  RiskResult,
+  StressResult,
+  StressSeverity,
+} from "./types";
 
 interface ModelTree {
   left: number[];
@@ -38,6 +47,24 @@ interface ModelArtifact {
   training: Record<string, unknown>;
 }
 
+interface ScoringContext {
+  input: ApplicationInput;
+  values: Record<string, number>;
+  vector: number[];
+  loanToIncome: number;
+}
+
+interface ExplanationEvaluation {
+  feature: string;
+  label: string;
+  current: number;
+  reference: number;
+  counterfactualPd: number;
+  impact: number;
+  lowerBound: number;
+  upperBound: number;
+}
+
 const artifact = rawArtifact as ModelArtifact;
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -61,6 +88,12 @@ export const POLICY = Object.freeze({
   target: "origination default risk over final loan resolution",
   decline: { pd: 0.35, debtToIncome: 0.67, creditScore: 580, delinquencies24m: 5, loanToIncome: 1.4 },
   review: { pd: 0.20, debtToIncome: 0.48, creditScore: 660, confidence: 0.66, delinquencies24m: 2 },
+});
+
+const SENSITIVITY = Object.freeze({
+  method: "deterministic-borrower-sensitivity" as const,
+  version: "CRIX-Sensitivity 1.0",
+  factors: Object.freeze({ mild: 0.55, severe: 1.0 }),
 });
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -95,9 +128,10 @@ function assertFiniteInput(input: ApplicationInput): void {
   if (input.loanAmount <= 0) throw new RangeError("loanAmount must be greater than zero");
 }
 
-function featureValueMap(input: ApplicationInput): Record<string, number> {
+function createScoringContext(input: ApplicationInput): ScoringContext {
   assertFiniteInput(input);
-  return {
+  const loanToIncome = input.loanAmount / input.annualIncome;
+  const values: Record<string, number> = {
     debtToIncome: input.debtToIncome,
     creditUtilization: input.creditUtilization,
     creditScore: input.creditScore,
@@ -105,26 +139,22 @@ function featureValueMap(input: ApplicationInput): Record<string, number> {
     inquiries6m: input.inquiries6m,
     oldestTradeMonths: input.oldestTradeMonths,
     openAccounts: input.openAccounts,
-    loanToIncome: input.loanAmount / input.annualIncome,
+    loanToIncome,
     employmentYears: input.employmentYears,
     cashBufferMonths: input.cashBufferMonths,
     onTimePaymentRate: input.onTimePaymentRate,
     incomeStability: input.incomeStability,
     recentCreditGrowth: input.recentCreditGrowth,
   };
-}
-
-function featureVector(input: ApplicationInput): number[] {
-  const values = featureValueMap(input);
-  return artifact.featureNames.map((name) => {
+  const vector = artifact.featureNames.map((name) => {
     const value = values[name];
     if (value === undefined) throw new Error(`Model artifact requests unknown feature: ${name}`);
     return value;
   });
+  return { input, values, vector, loanToIncome };
 }
 
-function rawChampionMargin(input: ApplicationInput): number {
-  const x = featureVector(input);
+function rawChampionMargin(context: ScoringContext): number {
   let margin = logit(artifact.baseScore);
 
   for (const tree of artifact.trees) {
@@ -148,7 +178,7 @@ function rawChampionMargin(input: ApplicationInput): number {
         break;
       }
 
-      const value = x[featureIndex];
+      const value = context.vector[featureIndex];
       if (value === undefined) throw new Error("Model artifact feature index is out of range");
       const goLeft = Number.isNaN(value) ? Boolean(defaultLeft) : value < threshold;
       node = goLeft ? left : right;
@@ -160,81 +190,119 @@ function rawChampionMargin(input: ApplicationInput): number {
   return margin;
 }
 
-export function predictDefaultProbability(input: ApplicationInput): number {
-  const margin = rawChampionMargin(input);
+function championProbability(context: ScoringContext): number {
+  const margin = rawChampionMargin(context);
   const calibrated = sigmoid(artifact.calibration.slope * margin + artifact.calibration.intercept);
   return clamp(calibrated, 0.0001, 0.9999);
 }
 
-export function predictChallengerProbability(input: ApplicationInput): number {
-  const x = featureVector(input);
+export function predictDefaultProbability(input: ApplicationInput): number {
+  return championProbability(createScoringContext(input));
+}
+
+function challengerProbability(context: ScoringContext): number {
   const challenger = artifact.challenger;
   if (
-    challenger.coefficients.length !== x.length ||
-    challenger.means.length !== x.length ||
-    challenger.scales.length !== x.length
+    challenger.coefficients.length !== context.vector.length ||
+    challenger.means.length !== context.vector.length ||
+    challenger.scales.length !== context.vector.length
   ) throw new Error("Challenger artifact dimensions do not match champion feature contract");
 
   let margin = challenger.intercept;
-  for (let index = 0; index < x.length; index += 1) {
+  for (let index = 0; index < context.vector.length; index += 1) {
     const scale = challenger.scales[index];
     const mean = challenger.means[index];
     const coefficient = challenger.coefficients[index];
     if (scale === undefined || mean === undefined || coefficient === undefined || !Number.isFinite(scale) || scale <= 0) {
       throw new Error("Challenger artifact contains an invalid standardization parameter");
     }
-    margin += coefficient * ((x[index]! - mean) / scale);
+    margin += coefficient * ((context.vector[index]! - mean) / scale);
   }
   return clamp(sigmoid(margin), 0.0001, 0.9999);
 }
 
-function outOfDistributionSignals(input: ApplicationInput): string[] {
-  const values = featureValueMap(input);
+export function predictChallengerProbability(input: ApplicationInput): number {
+  return challengerProbability(createScoringContext(input));
+}
+
+function outOfDistributionSignals(context: ScoringContext): string[] {
   return artifact.featureNames.filter((feature) => {
     const bound = artifact.trainingBounds[feature];
-    const value = values[feature];
+    const value = context.values[feature];
     if (!bound || value === undefined) return true;
     return value < bound.p01 || value > bound.p99;
   });
 }
 
-function withReferenceFeature(input: ApplicationInput, feature: string): ApplicationInput {
-  const reference = artifact.reference[feature];
-  if (reference === undefined) return input;
-  if (feature === "loanToIncome") return { ...input, loanAmount: reference * input.annualIncome };
-
+function withFeatureValue(input: ApplicationInput, feature: string, value: number): ApplicationInput {
+  if (feature === "loanToIncome") return { ...input, loanAmount: value * input.annualIncome };
   const candidate = { ...input };
   switch (feature) {
-    case "debtToIncome": candidate.debtToIncome = reference; break;
-    case "creditUtilization": candidate.creditUtilization = reference; break;
-    case "creditScore": candidate.creditScore = reference; break;
-    case "delinquencies24m": candidate.delinquencies24m = reference; break;
-    case "inquiries6m": candidate.inquiries6m = reference; break;
-    case "oldestTradeMonths": candidate.oldestTradeMonths = reference; break;
-    case "openAccounts": candidate.openAccounts = reference; break;
-    case "employmentYears": candidate.employmentYears = reference; break;
-    case "cashBufferMonths": candidate.cashBufferMonths = reference; break;
-    case "onTimePaymentRate": candidate.onTimePaymentRate = reference; break;
-    case "incomeStability": candidate.incomeStability = reference; break;
-    case "recentCreditGrowth": candidate.recentCreditGrowth = reference; break;
+    case "debtToIncome": candidate.debtToIncome = value; break;
+    case "creditUtilization": candidate.creditUtilization = value; break;
+    case "creditScore": candidate.creditScore = value; break;
+    case "delinquencies24m": candidate.delinquencies24m = value; break;
+    case "inquiries6m": candidate.inquiries6m = value; break;
+    case "oldestTradeMonths": candidate.oldestTradeMonths = value; break;
+    case "openAccounts": candidate.openAccounts = value; break;
+    case "employmentYears": candidate.employmentYears = value; break;
+    case "cashBufferMonths": candidate.cashBufferMonths = value; break;
+    case "onTimePaymentRate": candidate.onTimePaymentRate = value; break;
+    case "incomeStability": candidate.incomeStability = value; break;
+    case "recentCreditGrowth": candidate.recentCreditGrowth = value; break;
+    default: throw new Error(`Cannot perturb unknown feature: ${feature}`);
   }
   return candidate;
 }
 
-function reasonCodes(input: ApplicationInput, pd: number): ReasonCode[] {
-  return artifact.featureNames
-    .map((feature) => {
-      const counterfactualPd = predictDefaultProbability(withReferenceFeature(input, feature));
-      const impact = pd - counterfactualPd;
-      return {
-        feature,
-        label: FEATURE_LABELS[feature] ?? feature,
-        impact,
-        direction: impact >= 0 ? "risk-up" as const : "risk-down" as const,
-      };
-    })
+function explanationEvaluations(context: ScoringContext, pd: number): ExplanationEvaluation[] {
+  return artifact.featureNames.map((feature) => {
+    const reference = artifact.reference[feature];
+    const current = context.values[feature];
+    const bounds = artifact.trainingBounds[feature];
+    if (reference === undefined || current === undefined || !bounds) throw new Error(`Missing explanation metadata for feature: ${feature}`);
+    const target = clamp(reference, bounds.p01, bounds.p99);
+    const counterfactualPd = championProbability(createScoringContext(withFeatureValue(context.input, feature, target)));
+    return {
+      feature,
+      label: FEATURE_LABELS[feature] ?? feature,
+      current,
+      reference: target,
+      counterfactualPd,
+      impact: pd - counterfactualPd,
+      lowerBound: bounds.p01,
+      upperBound: bounds.p99,
+    };
+  });
+}
+
+function reasonCodes(evaluations: ExplanationEvaluation[]): ReasonCode[] {
+  return evaluations
+    .map(({ feature, label, impact }) => ({
+      feature,
+      label,
+      impact,
+      direction: impact >= 0 ? "risk-up" as const : "risk-down" as const,
+    }))
     .filter((item) => Math.abs(item.impact) > 0.0005)
-    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact) || a.feature.localeCompare(b.feature))
+    .slice(0, 5);
+}
+
+function counterfactuals(evaluations: ExplanationEvaluation[], pd: number): Counterfactual[] {
+  return evaluations
+    .filter((item) => item.counterfactualPd < pd - 0.0005 && item.reference !== item.current)
+    .map((item) => ({
+      feature: item.feature,
+      label: item.label,
+      from: item.current,
+      to: item.reference,
+      pdBefore: pd,
+      pdAfter: item.counterfactualPd,
+      trainingLowerBound: item.lowerBound,
+      trainingUpperBound: item.upperBound,
+    }))
+    .sort((a, b) => (b.pdBefore - b.pdAfter) - (a.pdBefore - a.pdAfter) || a.feature.localeCompare(b.feature))
     .slice(0, 5);
 }
 
@@ -253,44 +321,42 @@ function gradeFromScore(score: number): string {
   return "E";
 }
 
-function policyDecision(pd: number, input: ApplicationInput, confidence: number): Decision {
-  const loanToIncome = input.loanAmount / input.annualIncome;
-  if (
-    pd >= POLICY.decline.pd ||
-    input.debtToIncome >= POLICY.decline.debtToIncome ||
-    input.creditScore <= POLICY.decline.creditScore ||
-    input.delinquencies24m >= POLICY.decline.delinquencies24m ||
-    loanToIncome >= POLICY.decline.loanToIncome
-  ) return "DECLINE";
+function policyEvaluation(pd: number, context: ScoringContext, confidence: number): { decision: Decision; reasons: PolicyReason[] } {
+  const decline: PolicyReason[] = [];
+  if (pd >= POLICY.decline.pd) decline.push({ code: "PD_DECLINE_THRESHOLD", label: "Model PD meets the decline threshold", decision: "DECLINE" });
+  if (context.input.debtToIncome >= POLICY.decline.debtToIncome) decline.push({ code: "DTI_DECLINE_THRESHOLD", label: "Debt-to-income meets the decline threshold", decision: "DECLINE" });
+  if (context.input.creditScore <= POLICY.decline.creditScore) decline.push({ code: "CREDIT_SCORE_DECLINE_THRESHOLD", label: "Credit score meets the decline threshold", decision: "DECLINE" });
+  if (context.input.delinquencies24m >= POLICY.decline.delinquencies24m) decline.push({ code: "DELINQUENCY_DECLINE_THRESHOLD", label: "Recent delinquencies meet the decline threshold", decision: "DECLINE" });
+  if (context.loanToIncome >= POLICY.decline.loanToIncome) decline.push({ code: "LOAN_TO_INCOME_DECLINE_THRESHOLD", label: "Requested loan-to-income meets the decline threshold", decision: "DECLINE" });
+  if (decline.length > 0) return { decision: "DECLINE", reasons: decline };
 
-  if (
-    pd >= POLICY.review.pd ||
-    input.debtToIncome >= POLICY.review.debtToIncome ||
-    input.creditScore <= POLICY.review.creditScore ||
-    confidence < POLICY.review.confidence ||
-    input.delinquencies24m >= POLICY.review.delinquencies24m
-  ) return "REVIEW";
-
-  return "APPROVE";
+  const review: PolicyReason[] = [];
+  if (pd >= POLICY.review.pd) review.push({ code: "PD_REVIEW_THRESHOLD", label: "Model PD meets the review threshold", decision: "REVIEW" });
+  if (context.input.debtToIncome >= POLICY.review.debtToIncome) review.push({ code: "DTI_REVIEW_THRESHOLD", label: "Debt-to-income meets the review threshold", decision: "REVIEW" });
+  if (context.input.creditScore <= POLICY.review.creditScore) review.push({ code: "CREDIT_SCORE_REVIEW_THRESHOLD", label: "Credit score meets the review threshold", decision: "REVIEW" });
+  if (confidence < POLICY.review.confidence) review.push({ code: "LOW_CONFIDENCE_REVIEW_THRESHOLD", label: "Model confidence is below the review threshold", decision: "REVIEW" });
+  if (context.input.delinquencies24m >= POLICY.review.delinquencies24m) review.push({ code: "DELINQUENCY_REVIEW_THRESHOLD", label: "Recent delinquencies meet the review threshold", decision: "REVIEW" });
+  return review.length > 0 ? { decision: "REVIEW", reasons: review } : { decision: "APPROVE", reasons: [] };
 }
 
 export function assessRisk(input: ApplicationInput): RiskResult {
-  const pd = predictDefaultProbability(input);
-  const challengerPd = predictChallengerProbability(input);
+  const context = createScoringContext(input);
+  const pd = championProbability(context);
+  const challengerPd = challengerProbability(context);
   const disagreement = Math.abs(pd - challengerPd);
-  const outOfDistribution = outOfDistributionSignals(input);
+  const outOfDistribution = outOfDistributionSignals(context);
   const confidence = clamp(0.96 - disagreement * 1.9 - outOfDistribution.length * 0.12, 0.35, 0.98);
-  const loanToIncome = input.loanAmount / input.annualIncome;
-  const lgd = clamp(0.34 + 0.17 * loanToIncome + 0.11 * (1 - input.incomeStability) + 0.08 * (input.cashBufferMonths < 1 ? 1 : 0), 0.25, 0.82);
+  const lgd = clamp(0.34 + 0.17 * context.loanToIncome + 0.11 * (1 - input.incomeStability) + 0.08 * (input.cashBufferMonths < 1 ? 1 : 0), 0.25, 0.82);
   const ead = input.loanAmount;
   const expectedLoss = pd * lgd * ead;
   const score = scoreFromPd(pd);
-  const decision = policyDecision(pd, input, confidence);
-  const apr = clamp(8.5 + 22 * pd + 3.5 * loanToIncome + (decision === "REVIEW" ? 1.25 : 0), 8.5, 34.5);
+  const policy = policyEvaluation(pd, context, confidence);
+  const apr = clamp(8.5 + 22 * pd + 3.5 * context.loanToIncome + (policy.decision === "REVIEW" ? 1.25 : 0), 8.5, 34.5);
   const flags: string[] = [];
   if (disagreement >= 0.08) flags.push("MODEL_DISAGREEMENT");
   if (outOfDistribution.length > 0) flags.push("OUT_OF_DISTRIBUTION");
   if (confidence < POLICY.review.confidence) flags.push("LOW_CONFIDENCE");
+  const explanations = explanationEvaluations(context, pd);
 
   return {
     pd,
@@ -303,10 +369,12 @@ export function assessRisk(input: ApplicationInput): RiskResult {
     expectedLossRate: ead > 0 ? expectedLoss / ead : 0,
     score,
     grade: gradeFromScore(score),
-    decision,
+    decision: policy.decision,
     confidence,
     apr,
-    reasons: reasonCodes(input, pd),
+    reasons: reasonCodes(explanations),
+    policyReasons: policy.reasons,
+    counterfactuals: counterfactuals(explanations, pd),
     modelVersion: `${artifact.name} ${artifact.version}`,
     policyVersion: POLICY.version,
     outOfDistribution,
@@ -316,7 +384,7 @@ export function assessRisk(input: ApplicationInput): RiskResult {
 
 export function stressApplication(input: ApplicationInput, severity: StressSeverity): StressResult {
   const baseline = assessRisk(input);
-  const factor = severity === "severe" ? 1 : 0.55;
+  const factor = SENSITIVITY.factors[severity];
   const stressedInput: ApplicationInput = {
     ...input,
     annualIncome: input.annualIncome * (1 - 0.15 * factor),
@@ -329,6 +397,8 @@ export function stressApplication(input: ApplicationInput, severity: StressSever
   const stressed = assessRisk(stressedInput);
 
   return {
+    method: SENSITIVITY.method,
+    scenarioVersion: SENSITIVITY.version,
     severity,
     input: stressedInput,
     baseline,
@@ -358,6 +428,7 @@ export function modelMetadata() {
     training: artifact.training,
     treeCount: artifact.trees.length,
     policy: POLICY,
+    sensitivity: { method: SENSITIVITY.method, version: SENSITIVITY.version },
   };
 }
 
@@ -366,6 +437,12 @@ export function verifyModelIntegrity(): boolean {
   if (artifact.featureNames.length !== artifact.monotoneConstraints.length) return false;
   if (!Number.isFinite(artifact.calibration.slope) || !Number.isFinite(artifact.calibration.intercept)) return false;
   if (artifact.challenger.coefficients.length !== artifact.featureNames.length) return false;
+  for (const feature of artifact.featureNames) {
+    const bounds = artifact.trainingBounds[feature];
+    const reference = artifact.reference[feature];
+    if (!bounds || reference === undefined || !Number.isFinite(bounds.p01) || !Number.isFinite(bounds.p99) || !Number.isFinite(reference)) return false;
+    if (bounds.p01 > bounds.p99 || reference < bounds.p01 || reference > bounds.p99) return false;
+  }
   const sentinel: ApplicationInput = {
     annualIncome: 85_000,
     debtToIncome: 0.28,
