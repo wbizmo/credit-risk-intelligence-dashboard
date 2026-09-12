@@ -18,6 +18,8 @@ class SnapshotSpec:
     outcome_cutoff: str
     source_sha256: str
     mode: SnapshotMode = "point-in-time"
+    train_label_cutoff: str | None = None
+    calibration_label_cutoff: str | None = None
 
     def validate(self) -> None:
         dates = np.array(
@@ -32,6 +34,12 @@ class SnapshotSpec:
             raise ValueError("unsupported snapshot mode")
         if len(self.source_sha256) != 64:
             raise ValueError("snapshot source checksum must be SHA-256")
+        train_label = np.datetime64(self.train_label_cutoff or self.train_end, "D")
+        calibration_label = np.datetime64(self.calibration_label_cutoff or self.calibration_end, "D")
+        if train_label < dates[0] or calibration_label < dates[1]:
+            raise ValueError("label cutoffs cannot predate their origination windows")
+        if train_label > dates[3] or calibration_label > dates[3]:
+            raise ValueError("label cutoffs cannot exceed the observation cutoff")
 
 
 @dataclass(frozen=True)
@@ -73,16 +81,13 @@ def backward_asof_join(left_times: np.ndarray, right_times: np.ndarray, right_va
 
 def build_snapshot_masks(
     issue_dates: np.ndarray,
-    outcome_available_at: np.ndarray,
+    outcome_available_at: np.ndarray | None,
     spec: SnapshotSpec,
 ) -> SnapshotMasks:
     spec.validate()
     issue = np.asarray(issue_dates, dtype="datetime64[D]").reshape(-1)
-    outcome = np.asarray(outcome_available_at, dtype="datetime64[D]").reshape(-1)
-    if len(issue) == 0 or len(issue) != len(outcome):
-        raise ValueError("issue/outcome availability arrays must be non-empty and aligned")
-    if np.isnat(issue).any() or np.isnat(outcome).any():
-        raise ValueError("snapshot inputs contain missing dates")
+    if len(issue) == 0 or np.isnat(issue).any():
+        raise ValueError("snapshot issue dates must be non-empty and complete")
 
     train_end = np.datetime64(spec.train_end, "D")
     calibration_end = np.datetime64(spec.calibration_end, "D")
@@ -92,11 +97,23 @@ def build_snapshot_masks(
     train_issue = issue <= train_end
     calibration_issue = (issue > train_end) & (issue <= calibration_end)
     decision = (issue > calibration_end) & (issue <= decision_end)
+
+    if outcome_available_at is None:
+        if spec.mode != "retrospective-resolved":
+            raise ValueError("point-in-time snapshots require outcome availability timestamps")
+        evaluable = np.ones(len(issue), dtype=bool)
+        return SnapshotMasks(train=train_issue, calibration=calibration_issue, decision=decision, evaluable=evaluable)
+
+    outcome = np.asarray(outcome_available_at, dtype="datetime64[D]").reshape(-1)
+    if len(outcome) != len(issue) or np.isnat(outcome).any():
+        raise ValueError("issue/outcome availability arrays must be aligned and complete")
     evaluable = outcome <= outcome_cutoff
 
     if spec.mode == "point-in-time":
-        train = train_issue & (outcome <= train_end)
-        calibration = calibration_issue & (outcome <= calibration_end)
+        train_label_cutoff = np.datetime64(spec.train_label_cutoff or spec.train_end, "D")
+        calibration_label_cutoff = np.datetime64(spec.calibration_label_cutoff or spec.calibration_end, "D")
+        train = train_issue & (outcome <= train_label_cutoff)
+        calibration = calibration_issue & (outcome <= calibration_label_cutoff)
     else:
         train = train_issue & evaluable
         calibration = calibration_issue & evaluable
@@ -111,8 +128,10 @@ def snapshot_manifest(spec: SnapshotSpec, feature_contract_version: str, masks: 
         "featureContractVersion": feature_contract_version,
         "sourceSha256": spec.source_sha256,
         "windows": {
-            "trainEnd": spec.train_end,
-            "calibrationEnd": spec.calibration_end,
+            "trainOriginationsEnd": spec.train_end,
+            "trainLabelsAsOf": spec.train_label_cutoff or spec.train_end,
+            "calibrationOriginationsEnd": spec.calibration_end,
+            "calibrationLabelsAsOf": spec.calibration_label_cutoff or spec.calibration_end,
             "decisionEnd": spec.decision_end,
             "outcomeCutoff": spec.outcome_cutoff,
         },
