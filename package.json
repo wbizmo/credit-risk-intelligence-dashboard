@@ -30,7 +30,7 @@
     "@types/node": "^22.10.2",
     "eslint": "^10.9.1",
     "tsup": "^8.0.0",
-    "tsx": "^8.0.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
