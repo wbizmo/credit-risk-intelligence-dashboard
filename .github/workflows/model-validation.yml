@@ -18,6 +18,9 @@ jobs:
   train-and-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    env:
+      CRIX_TRAINING_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CRIX_TRAINING_RUN_ID: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -49,6 +52,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           import sys
 
@@ -69,6 +73,9 @@ jobs:
           assert governance["policyBacktests"]["approveAll"]["selectedCount"] == champion["metrics"]["testSamples"]
           assert "not a 12-month PD" in champion["target"]["horizon"]
           assert verify_manifest(champion_path, champion_manifest)
+          assert champion_manifest["trainedAt"] == champion["trainedAt"]
+          assert champion_manifest["trainingRunId"] == os.environ["CRIX_TRAINING_RUN_ID"]
+          assert champion_manifest["gitCommit"] == os.environ["CRIX_TRAINING_GIT_SHA"]
 
           expected = {
               "CRIX-MonoBoost@2.0.0": "crix-monoboost-v2",
@@ -86,6 +93,8 @@ jobs:
               manifest = json.loads(manifest_path.read_text())
               assert verify_manifest(artifact_path, manifest), model_id
               assert manifest["artifactSha256"] == entry["artifactSha256"]
+              assert manifest["trainingRunId"] == os.environ["CRIX_TRAINING_RUN_ID"]
+              assert manifest["gitCommit"] == os.environ["CRIX_TRAINING_GIT_SHA"]
 
           survival = json.loads((artifact_dir / "crix-lifetime-pd-v1.json").read_text())
           assert survival["target"]["maxHorizonMonths"] == 36
@@ -115,6 +124,7 @@ jobs:
         with:
           name: crix-risk-stack-${{ github.run_id }}
           path: |
+            model/artifacts/crix-monoboost-v2.json
             model/artifacts/*.manifest.json
             model/artifacts/registry.json
             model/artifacts/crix-lifetime-pd-v1.json
@@ -123,5 +133,6 @@ jobs:
             model/artifacts/crix-ccf-taiwan-v1.json
             model/artifacts/crix-lgd-v1.json
             model/artifacts/snapshot-*.json
+            model/TRAINING_REPORT.md
             model/RISK_STACK_REPORT.md
           if-no-files-found: error
