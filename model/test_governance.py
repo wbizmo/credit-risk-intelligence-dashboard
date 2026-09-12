@@ -6,13 +6,16 @@ import numpy as np
 
 from governance import (
     POPULATION_CONDITIONING,
+    PRIMARY_FEATURE_PROVENANCE,
     FeatureProvenance,
     assert_point_in_time,
     backtest_pd_policy,
     bootstrap_metric_interval,
+    build_governance_evidence,
     calibration_by_bins,
     calibration_intercept_slope,
     population_stability_index,
+    segment_diagnostics,
     validate_feature_provenance,
 )
 
@@ -45,6 +48,13 @@ class ProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outcome-derived"):
             validate_feature_provenance(provenance, ["futureRecovery"])
 
+    def test_primary_feature_provenance_matches_the_v3_champion_contract(self) -> None:
+        names = [item.feature for item in PRIMARY_FEATURE_PROVENANCE]
+        self.assertEqual(names, ["debtToIncome", "loanToIncome", "creditScore", "employmentYears"])
+        validated = validate_feature_provenance(PRIMARY_FEATURE_PROVENANCE, names)
+        self.assertEqual(set(validated), set(names))
+        self.assertTrue(all(item.availability == "application-time" for item in validated.values()))
+
     def test_point_in_time_guard_rejects_future_availability_without_row_payloads(self) -> None:
         available_at = np.array(["2017-01-01", "2017-02-02"], dtype="datetime64[D]")
         as_of = np.array(["2017-01-01", "2017-02-01"], dtype="datetime64[D]")
@@ -70,7 +80,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["predicted"], 0.25)
         self.assertAlmostEqual(rows[0]["observed"], 0.5)
 
-    def test_calibration_intercept_slope_recovers_perfect_logistic_calibration(self) -> None:
+    def test_calibration_intercept_slope_recovers_positive_relationship(self) -> None:
         p = np.array([0.05, 0.10, 0.20, 0.35, 0.65, 0.80, 0.90, 0.95], dtype=float)
         y = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=np.int8)
         result = calibration_intercept_slope(y, p)
@@ -95,6 +105,48 @@ class DiagnosticsTests(unittest.TestCase):
         psi = population_stability_index(expected, actual, bins=10)
         self.assertTrue(np.isfinite(psi))
         self.assertGreater(psi, 0)
+
+    def test_segment_diagnostics_keep_counts_and_mark_low_support(self) -> None:
+        y = np.array([0, 1, 0, 1, 0, 1], dtype=np.int8)
+        p = np.array([0.1, 0.2, 0.15, 0.4, 0.25, 0.5], dtype=float)
+        segments = np.array(["A", "A", "A", "B", "B", "B"])
+        rows = segment_diagnostics(y, p, segments, min_count=4, min_events=1)
+        self.assertEqual({row["segment"] for row in rows}, {"A", "B"})
+        self.assertTrue(all(row["count"] == 3 for row in rows))
+        self.assertTrue(all(row["status"] == "insufficient-data" for row in rows))
+
+    def test_build_governance_evidence_contains_auditable_population_and_policy_metadata(self) -> None:
+        y_cal = np.array([0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1], dtype=np.int8)
+        p_cal = np.array([0.08, 0.12, 0.18, 0.22, 0.28, 0.31, 0.38, 0.44, 0.52, 0.61, 0.72, 0.83])
+        y_test = np.array([0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1], dtype=np.int8)
+        p_test = np.array([0.10, 0.16, 0.20, 0.26, 0.33, 0.37, 0.43, 0.49, 0.58, 0.66, 0.73, 0.86])
+        exposure = np.array([100.0] * len(y_test))
+        segments = {
+            "creditScoreBand": np.array(["700+", "700+", "700+", "700+", "660-699", "660-699", "660-699", "660-699", "<660", "<660", "<660", "<660"])
+        }
+
+        evidence = build_governance_evidence(
+            y_cal,
+            p_cal,
+            y_test,
+            p_test,
+            exposure,
+            feature_names=[item.feature for item in PRIMARY_FEATURE_PROVENANCE],
+            segments=segments,
+            bootstrap_samples=100,
+            min_segment_count=4,
+        )
+
+        self.assertEqual(evidence["populationConditioning"], POPULATION_CONDITIONING)
+        self.assertFalse(evidence["rejectInference"]["supported"])
+        self.assertEqual(
+            [item["feature"] for item in evidence["featureProvenance"]],
+            [item.feature for item in PRIMARY_FEATURE_PROVENANCE],
+        )
+        self.assertEqual(set(evidence["uncertainty"]), {"auc", "brier", "logLoss", "ks"})
+        self.assertGreaterEqual(evidence["stability"]["calibrationToTestPdPsi"], 0)
+        self.assertEqual(evidence["policyBacktests"]["approveAll"]["selectedCount"], len(y_test))
+        self.assertIn("creditScoreBand", evidence["segments"])
 
 
 class PolicyBacktestTests(unittest.TestCase):
