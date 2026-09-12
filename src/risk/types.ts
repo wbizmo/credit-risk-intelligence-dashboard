@@ -27,6 +27,23 @@ export interface ReasonCode {
   direction: "risk-up" | "risk-down";
 }
 
+export interface PolicyReason {
+  code: string;
+  label: string;
+  decision: Exclude<Decision, "APPROVE">;
+}
+
+export interface Counterfactual {
+  feature: string;
+  label: string;
+  from: number;
+  to: number;
+  pdBefore: number;
+  pdAfter: number;
+  trainingLowerBound: number;
+  trainingUpperBound: number;
+}
+
 export interface RiskResult {
   pd: number;
   pdHorizon: string;
@@ -42,6 +59,8 @@ export interface RiskResult {
   confidence: number;
   apr: number;
   reasons: ReasonCode[];
+  policyReasons: PolicyReason[];
+  counterfactuals: Counterfactual[];
   modelVersion: string;
   policyVersion: string;
   outOfDistribution: string[];
@@ -49,6 +68,8 @@ export interface RiskResult {
 }
 
 export interface StressResult {
+  method: "deterministic-borrower-sensitivity";
+  scenarioVersion: string;
   severity: StressSeverity;
   input: ApplicationInput;
   baseline: RiskResult;
