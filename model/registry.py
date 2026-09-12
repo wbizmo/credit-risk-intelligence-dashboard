@@ -122,7 +122,7 @@ def update_registry_index(index_path: Path, entry: Mapping[str, object]) -> None
     if isinstance(existing_by_id, dict):
         identity = (existing_by_id.get("modelName"), existing_by_id.get("version"), existing_by_id.get("artifactSha256"))
         if identity != (model_name, version, digest):
-            raise ValueError("existing modelId cannot be rebound to different identity or artifact bytes")
+            raise ValueError("existing modelId cannot be rebound to a different artifact digest or identity")
 
     for existing in models.values():
         if not isinstance(existing, dict):
