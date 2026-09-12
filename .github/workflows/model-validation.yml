@@ -34,13 +34,23 @@ jobs:
         run: pip install -r model/requirements.txt
       - name: Train real-data champion/challenger with governance gates
         run: python model/train.py
-      - name: Verify generated artifact carries governance evidence
+      - name: Publish champion manifest and registry index
+        run: python model/publish_champion_manifest.py
+      - name: Verify generated artifact carries governance and integrity evidence
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+          import sys
 
-          artifact = json.loads(Path("model/artifacts/crix-monoboost-v2.json").read_text())
+          sys.path.insert(0, "model")
+          from registry import verify_manifest
+
+          artifact_path = Path("model/artifacts/crix-monoboost-v2.json")
+          manifest_path = Path("model/artifacts/crix-monoboost-v2.manifest.json")
+          artifact = json.loads(artifact_path.read_text())
+          manifest = json.loads(manifest_path.read_text())
+          registry = json.loads(Path("model/artifacts/registry.json").read_text())
           governance = artifact["training"]["governance"]
           assert governance["populationConditioning"] == "granted-loans-only"
           assert governance["rejectInference"]["supported"] is False
@@ -48,5 +58,18 @@ jobs:
           assert set(governance["uncertainty"]) == {"auc", "brier", "logLoss", "ks"}
           assert governance["policyBacktests"]["approveAll"]["selectedCount"] == artifact["metrics"]["testSamples"]
           assert "not a 12-month PD" in artifact["target"]["horizon"]
-          print("CRIX model-governance artifact gate passed")
+          assert verify_manifest(artifact_path, manifest)
+          assert manifest["modelId"] == "CRIX-MonoBoost@2.0.0"
+          assert registry["models"]["CRIX-MonoBoost@2.0.0"]["artifactSha256"] == manifest["artifactSha256"]
+          print("CRIX model-governance and registry artifact gate passed")
+          print("CRIX_RUNTIME_MANIFEST=" + json.dumps(manifest, sort_keys=True, separators=(",", ":")))
+          print("CRIX_REGISTRY_INDEX=" + json.dumps(registry, sort_keys=True, separators=(",", ":")))
           PY
+      - name: Upload registry evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: crix-champion-registry-${{ github.run_id }}
+          path: |
+            model/artifacts/crix-monoboost-v2.manifest.json
+            model/artifacts/registry.json
+          if-no-files-found: error
