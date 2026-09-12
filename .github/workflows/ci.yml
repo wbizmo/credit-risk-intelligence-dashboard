@@ -23,6 +23,8 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund --legacy-peer-deps
       - run: npm run verify
+      - name: Capture risk-engine hot-path benchmark evidence
+        run: npm run benchmark:risk
 
   governance:
     runs-on: ubuntu-latest
