@@ -1,0 +1,41 @@
+{
+  "featureNames": [
+    "monthIndex",
+    "installment",
+    "annualInterestRate",
+    "fundedPrincipal",
+    "termMonths"
+  ],
+  "metrics": {
+    "baselineDollarMae": 722.3091099146827,
+    "challengerDollarMae": 340.9592326209186,
+    "testDefaults": 27833,
+    "trainDefaults": 13806
+  },
+  "name": "CRIX-EAD-Installment",
+  "nonlinearChallenger": {
+    "featureNames": [
+      "baselineContractualBalance",
+      "progress",
+      "annualInterestRate",
+      "fundedPrincipal"
+    ],
+    "maxIter": 150,
+    "maxLeafNodes": 15,
+    "method": "hist-gradient-boosting-residual"
+  },
+  "product": "unsecured-personal-loan",
+  "schemaVersion": 1,
+  "target": "observed funded principal less total principal received, evaluated on defaulted loans",
+  "version": "1.0.0",
+  "warning": "Resolution-date proxy, not an exact default-date exposure. Prepayment timing and exact default date are unavailable.",
+  "baseline": {
+    "method": "contractual-amortization-balance",
+    "rules": [
+      "scheduled installment is treated as end-of-period",
+      "zero-rate loans amortize linearly",
+      "observed proxy target is max(0, fundedPrincipal - totalPrincipalReceived)"
+    ]
+  },
+  "v3RuntimeBaseline": "Current /api/v3 remains unchanged: EAD = requested loanAmount."
+}

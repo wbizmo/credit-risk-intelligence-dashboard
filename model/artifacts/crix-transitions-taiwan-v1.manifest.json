@@ -1,0 +1,42 @@
+{
+  "artifactSchemaVersion": 1,
+  "artifactSha256": "0e03d848887722a153d48f7cfbcbbb6f0a3ada24cbafe36d1448d944ad8f18de",
+  "datasets": [
+    {
+      "doi": "10.24432/C55S3H",
+      "id": "uci-taiwan-credit-card-default",
+      "license": "CC-BY-4.0",
+      "product": "revolving-credit-card",
+      "retrievedDataFingerprintSha256": "0c41e1e163fe918f22d4c138a7e13ef0c3c50ff3c4d396f4ced14b3902190e51",
+      "rows": 30000
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "uci-taiwan-transitions-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "observedTransitions": 156636,
+    "rows": 30000
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-Transitions-Taiwan@1.0.0",
+  "modelName": "CRIX-Transitions-Taiwan",
+  "parent": null,
+  "product": "revolving-credit-card",
+  "randomSeed": 42,
+  "report": "model/RISK_STACK_REPORT.md",
+  "split": {
+    "history": "Apr-Sep-2005",
+    "outcome": "Oct-2005 default indicator"
+  },
+  "status": "research",
+  "target": {
+    "definition": "Observed Apr-Sep 2005 repayment-state transitions plus observed next-month default only",
+    "name": "monthlyDelinquencyMigration"
+  },
+  "trainedAt": "2026-09-12T21:53:04+00:00",
+  "trainingConfigHash": "87380c4450b887a0ec59862a213656d487f6e8d6777f435901c8c501baf36a2f",
+  "trainingRunId": "34721148952",
+  "version": "1.0.0"
+}

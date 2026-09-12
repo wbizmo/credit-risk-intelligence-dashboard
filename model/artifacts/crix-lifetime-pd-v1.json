@@ -1,0 +1,92 @@
+{
+  "calibration": {
+    "intercept": 0.6837161490080222,
+    "method": "platt-on-person-period-hazard",
+    "slope": 1.336757157897873
+  },
+  "horizonMetrics": {
+    "12m": {
+      "auc": 0.5685028462878193,
+      "averagePd": 0.06488516782528668,
+      "brier": 0.04659565477939919,
+      "events": 2513,
+      "observedRate": 0.04885113331518992,
+      "samples": 51442,
+      "status": "ok"
+    },
+    "24m": {
+      "auc": 0.5844786782605772,
+      "averagePd": 0.14054953115698376,
+      "brier": 0.09765073433334201,
+      "events": 5637,
+      "observedRate": 0.10957972085066676,
+      "samples": 51442,
+      "status": "ok"
+    },
+    "36m": {
+      "auc": 0.5906905982180888,
+      "averagePd": 0.207912269479437,
+      "brier": 0.128520714309473,
+      "events": 7659,
+      "observedRate": 0.14892375896867527,
+      "samples": 51429,
+      "status": "ok"
+    },
+    "3m": {
+      "auc": 0.5230682216834333,
+      "averagePd": 0.006555756485667571,
+      "brier": 0.003938280259374426,
+      "events": 203,
+      "observedRate": 0.003946191827689437,
+      "samples": 51442,
+      "status": "ok"
+    },
+    "6m": {
+      "auc": 0.5277953538212743,
+      "averagePd": 0.022555589881720732,
+      "brier": 0.015995250768132692,
+      "events": 834,
+      "observedRate": 0.016212433420162514,
+      "samples": 51442,
+      "status": "ok"
+    }
+  },
+  "model": {
+    "coefficients": [
+      0.08871037010653368,
+      0.4416663423511041,
+      -0.0021712966314039205,
+      0.09917216863501153
+    ],
+    "featureNames": [
+      "debtToIncome",
+      "loanToIncome",
+      "employmentYears",
+      "monthIndexNormalized"
+    ],
+    "intercept": -3.8789555331743943,
+    "means": [
+      0.16048915726526952,
+      0.16727883187698958,
+      6.1844865073792925,
+      0.5009950306740403
+    ],
+    "method": "discrete-time-logistic-hazard",
+    "scales": [
+      0.06508948515965836,
+      0.08957670967693725,
+      3.5277167713971207,
+      0.2954052036475721
+    ]
+  },
+  "name": "CRIX-LifetimePD",
+  "product": "unsecured-personal-loan",
+  "schemaVersion": 1,
+  "target": {
+    "censoring": "right-censored at last_pymnt_d/event proxy, min(term,36m) or dataset cutoff",
+    "event": "charged-off/default final status; last_pymnt_d is terminal/event-date proxy because exact charge-off date is unavailable",
+    "maxHorizonMonths": 36,
+    "prediction": "monthly conditional hazard, survival, marginal PD and cumulative PD"
+  },
+  "version": "1.0.0"
+}

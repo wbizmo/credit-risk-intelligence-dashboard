@@ -1,0 +1,43 @@
+{
+  "baseline": {
+    "alpha": 25.0,
+    "coefficients": [
+      -0.1145563198515876,
+      0.08064006307176418,
+      0.013018650710565158
+    ],
+    "intercept": 0.003068365006835803,
+    "means": [
+      0.320976154710635,
+      -0.2689688631677438,
+      0.497775197962324
+    ],
+    "method": "ridge",
+    "scales": [
+      0.33561114527283137,
+      1.1496862145778943,
+      0.22315824062144604
+    ]
+  },
+  "featureNames": [
+    "priorUtilization",
+    "priorRepaymentStatusCode",
+    "monthIndexNormalized"
+  ],
+  "metrics": {
+    "mae": 0.3449535919704457,
+    "rawFiniteSamples": 143772,
+    "rawProxyMax": 938.0,
+    "rawProxyMin": -2856.1428571428573,
+    "rmse": 1.1241495247173552,
+    "testSamples": 27947,
+    "trainingSupportSamples": 143373
+  },
+  "name": "CRIX-CCF-Taiwan",
+  "product": "revolving-credit-card",
+  "schemaVersion": 1,
+  "target": "net-balance-change CCF proxy = (next statement balance - prior statement balance) / prior undrawn limit",
+  "targetPolicy": "raw proxy is not clamped; model fitting uses finite observations with |proxy| <= 20 and reports that support rule explicitly",
+  "version": "1.0.0",
+  "warning": "This is not pure draw CCF: statement balance changes also reflect payments, interest, fees and purchases."
+}

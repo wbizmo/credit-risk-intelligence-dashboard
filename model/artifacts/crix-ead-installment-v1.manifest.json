@@ -1,0 +1,42 @@
+{
+  "artifactSchemaVersion": 1,
+  "artifactSha256": "c7c7bdc558b8b6152abe72970599f471371a0c9f3083e23d82c72af43f600a4a",
+  "datasets": [
+    {
+      "id": "lendingclub-lifecycle-2007-2014-mirror",
+      "license": "mirror-provenance-documented-research-only",
+      "product": "unsecured-personal-loan",
+      "sha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545"
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "lifecycle-ead-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "baselineDollarMae": 722.3091099146827,
+    "challengerDollarMae": 340.9592326209186,
+    "testDefaults": 27833,
+    "trainDefaults": 13806
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-EAD-Installment@1.0.0",
+  "modelName": "CRIX-EAD-Installment",
+  "parent": null,
+  "product": "unsecured-personal-loan",
+  "randomSeed": 42,
+  "report": "model/RISK_STACK_REPORT.md",
+  "split": {
+    "test": "issue_d >= 2013-01-01",
+    "train": "issue_d < 2013-01-01"
+  },
+  "status": "research",
+  "target": {
+    "definition": "observed funded principal less total principal received, evaluated on defaulted loans",
+    "name": "exposureAtDefaultProxy"
+  },
+  "trainedAt": "2026-09-12T21:53:04+00:00",
+  "trainingConfigHash": "99b09159568be4103552e5bd9ea10a4cf9eb97fc7a7648d3594d075b4c6efcb6",
+  "trainingRunId": "34721148952",
+  "version": "1.0.0"
+}
