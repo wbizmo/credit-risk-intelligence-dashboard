@@ -35,13 +35,67 @@ describe("CRIX risk engine", () => {
     expect(result.expectedLoss).toBeGreaterThan(0);
     expect(["APPROVE", "REVIEW", "DECLINE"]).toContain(result.decision);
     expect(result.reasons.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.policyReasons)).toBe(true);
+    expect(Array.isArray(result.counterfactuals)).toBe(true);
   });
 
-  it("raises risk under severe stress", () => {
+  it("keeps policy reasons separate from champion-model reasons", () => {
+    const result = assessRisk({
+      ...baseline,
+      creditScore: 570,
+      delinquencies24m: 6,
+    });
+
+    expect(result.decision).toBe("DECLINE");
+    expect(result.policyReasons.map((reason) => reason.code)).toContain("CREDIT_SCORE_DECLINE_THRESHOLD");
+    expect(result.policyReasons.map((reason) => reason.code)).toContain("DELINQUENCY_DECLINE_THRESHOLD");
+    expect(result.reasons.every((reason) => ["debtToIncome", "loanToIncome", "creditScore", "employmentYears"].includes(reason.feature))).toBe(true);
+  });
+
+  it("returns only bounded lower-risk model counterfactuals", () => {
+    const result = assessRisk({
+      ...baseline,
+      debtToIncome: 0.58,
+      loanAmount: 50_000,
+      creditScore: 630,
+      employmentYears: 1,
+    });
+
+    for (const item of result.counterfactuals) {
+      expect(["debtToIncome", "loanToIncome", "creditScore", "employmentYears"]).toContain(item.feature);
+      expect(item.pdAfter).toBeLessThan(item.pdBefore);
+      expect(Number.isFinite(item.to)).toBe(true);
+      expect(item.to).toBeGreaterThanOrEqual(item.trainingLowerBound);
+      expect(item.to).toBeLessThanOrEqual(item.trainingUpperBound);
+    }
+  });
+
+  it("is deterministic for identical inputs", () => {
+    const first = assessRisk({ ...baseline, debtToIncome: 0.41 });
+    const second = assessRisk({ ...baseline, debtToIncome: 0.41 });
+    expect(second).toEqual(first);
+  });
+
+  it("raises risk under severe deterministic borrower sensitivity without mutating the input", () => {
+    const original = { ...baseline };
     const stressed = stressApplication(baseline, "severe");
+    expect(stressed.method).toBe("deterministic-borrower-sensitivity");
+    expect(stressed.scenarioVersion).toBe("CRIX-Sensitivity 1.0");
     expect(stressed.stressed.pd).toBeGreaterThanOrEqual(stressed.baseline.pd);
     expect(stressed.stressed.expectedLoss).toBeGreaterThan(stressed.baseline.expectedLoss);
     expect(stressed.delta.pd).toBeGreaterThanOrEqual(0);
+    expect(baseline).toEqual(original);
+  });
+
+  it("keeps severe sensitivity at least as adverse as mild", () => {
+    const mild = stressApplication(baseline, "mild");
+    const severe = stressApplication(baseline, "severe");
+    expect(severe.input.annualIncome).toBeLessThanOrEqual(mild.input.annualIncome);
+    expect(severe.input.debtToIncome).toBeGreaterThanOrEqual(mild.input.debtToIncome);
+    expect(severe.input.creditUtilization).toBeGreaterThanOrEqual(mild.input.creditUtilization);
+    expect(severe.input.cashBufferMonths).toBeLessThanOrEqual(mild.input.cashBufferMonths);
+    expect(severe.input.incomeStability).toBeLessThanOrEqual(mild.input.incomeStability);
+    expect(severe.input.recentCreditGrowth).toBeGreaterThanOrEqual(mild.input.recentCreditGrowth);
   });
 
   it("preserves monotonic debt-to-income behavior for a representative case", () => {
@@ -50,10 +104,22 @@ describe("CRIX risk engine", () => {
     expect(high).toBeGreaterThanOrEqual(low);
   });
 
+  it("preserves monotonic requested-loan-to-income behavior for a representative case", () => {
+    const low = predictDefaultProbability({ ...baseline, loanAmount: 8_500 });
+    const high = predictDefaultProbability({ ...baseline, loanAmount: 55_000 });
+    expect(high).toBeGreaterThanOrEqual(low);
+  });
+
   it("preserves monotonic bureau-score behavior for a representative case", () => {
     const weak = predictDefaultProbability({ ...baseline, creditScore: 620 });
     const strong = predictDefaultProbability({ ...baseline, creditScore: 780 });
     expect(strong).toBeLessThanOrEqual(weak);
+  });
+
+  it("preserves monotonic employment-tenure behavior for a representative case", () => {
+    const short = predictDefaultProbability({ ...baseline, employmentYears: 0.5 });
+    const long = predictDefaultProbability({ ...baseline, employmentYears: 10 });
+    expect(long).toBeLessThanOrEqual(short);
   });
 
   it("rejects non-finite engine inputs even when called outside the HTTP validator", () => {

@@ -92,6 +92,23 @@ describe("CRIX HTTP API", () => {
     expect(body.result.pd).toBeGreaterThan(0);
     expect(body.result.pdHorizon).toContain("final-loan-resolution");
     expect(body.result.modelVersion).toContain("CRIX-MonoBoost");
+    expect(Array.isArray(body.result.policyReasons)).toBe(true);
+    expect(Array.isArray(body.result.counterfactuals)).toBe(true);
+    await app.close();
+  });
+
+  it("labels the current stress endpoint as deterministic borrower sensitivity", async () => {
+    const app = await buildApp(config());
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/stress",
+      payload: { application, severity: "mild" },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.method).toBe("deterministic-borrower-sensitivity");
+    expect(body.scenarioVersion).toBe("CRIX-Sensitivity 1.0");
+    expect(body.severity).toBe("mild");
     await app.close();
   });
 

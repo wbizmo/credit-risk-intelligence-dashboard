@@ -20,6 +20,11 @@ from datasets import (
     download_lendingclub,
     harmonize_lendingclub,
 )
+from governance import (
+    PRIMARY_FEATURE_PROVENANCE,
+    build_governance_evidence,
+    validate_feature_provenance,
+)
 
 SEED = 42
 TRAIN_END = np.datetime64("2015-12-31")
@@ -131,9 +136,55 @@ def calibration_diagnostics(y_true: np.ndarray, probability: np.ndarray) -> list
     return rows
 
 
+def fixed_segments(test) -> dict[str, np.ndarray]:
+    credit_score = test["creditScore"].to_numpy(dtype=float)
+    dti = test["debtToIncome"].to_numpy(dtype=float)
+    loan_to_income = test["loanToIncome"].to_numpy(dtype=float)
+    employment = test["employmentYears"].to_numpy(dtype=float)
+    return {
+        "creditScoreBand": np.select(
+            [credit_score < 620, credit_score < 660, credit_score < 700, credit_score < 740],
+            ["<620", "620-659", "660-699", "700-739"],
+            default="740+",
+        ),
+        "debtToIncomeBand": np.select(
+            [dti < 0.20, dti < 0.35, dti < 0.50, dti < 0.70],
+            ["<0.20", "0.20-0.34", "0.35-0.49", "0.50-0.69"],
+            default="0.70+",
+        ),
+        "loanToIncomeBand": np.select(
+            [loan_to_income < 0.15, loan_to_income < 0.30, loan_to_income < 0.50, loan_to_income < 0.80],
+            ["<0.15", "0.15-0.29", "0.30-0.49", "0.50-0.79"],
+            default="0.80+",
+        ),
+        "employmentYearsBand": np.select(
+            [employment < 1, employment < 3, employment < 5, employment < 10],
+            ["<1", "1-2", "3-4", "5-9"],
+            default="10+",
+        ),
+    }
+
+
 def write_training_report(path: Path, artifact: dict) -> None:
     metrics = artifact["metrics"]
     split = artifact["training"]["split"]
+    governance = artifact["training"]["governance"]
+    uncertainty = governance["uncertainty"]
+    backtests = governance["policyBacktests"]
+    provenance_rows = "\n".join(
+        f"| `{item['feature']}` | {', '.join(item['sources'])} | {item['availability']} | {item['outcome_derived']} |"
+        for item in governance["featureProvenance"]
+    )
+    uncertainty_rows = "\n".join(
+        f"| {name} | {entry['point']:.4f} | {entry['lower']:.4f} | {entry['upper']:.4f} |"
+        for name, entry in uncertainty.items()
+    )
+    backtest_rows = "\n".join(
+        f"| {name} | {entry['selectionRate']:.2%} | "
+        f"{entry['observedDefaultRate']:.2%} | ${entry['selectedExposure']:,.0f} |"
+        for name, entry in backtests.items()
+        if entry["observedDefaultRate"] is not None
+    )
     report = f"""# CRIX real-world training report
 
 Generated from the immutable model artifact. This report is model-development evidence, not a production validation approval.
@@ -147,6 +198,9 @@ Generated from the immutable model artifact. This report is model-development ev
 - Rows in source: {artifact['training']['sourceRows']:,}
 - Rows surviving CRIX harmonization: {artifact['training']['usableRows']:,}
 - Target: final resolved loan status, charged-off/default = 1 and fully-paid = 0
+- Population conditioning: `{governance['populationConditioning']}`
+
+The primary outcome cohort contains historically granted loans with observed outcomes. CRIX does not fabricate outcomes for rejected applicants, so policy backtests below are conditional selection analyses over the observed granted-loan cohort rather than applicant-population counterfactuals.
 
 ## Temporal design
 
@@ -169,6 +223,32 @@ Generated from the immutable model artifact. This report is model-development ev
 | OOT observations | {metrics['testSamples']:,} |
 | OOT default rate | {metrics['defaultRate']:.2%} |
 | Logistic challenger ROC-AUC | {metrics['challengerAuc']:.4f} |
+
+### Bootstrap uncertainty (95% percentile intervals)
+
+| Metric | Point | Lower | Upper |
+|---|---:|---:|---:|
+{uncertainty_rows}
+
+Calibration-to-OOT PD population stability index: **{governance['stability']['calibrationToTestPdPsi']:.4f}**.
+
+## Point-in-time feature provenance
+
+The champion contract fails closed if a trained feature lacks provenance metadata or is marked outcome-derived.
+
+| Feature | Source field(s) | Availability | Outcome-derived |
+|---|---|---|---|
+{provenance_rows}
+
+The fixed segment diagnostics stored in the artifact cover credit-score, DTI, requested-loan-to-income and employment-tenure bands. Every segment carries observation/event counts and returns `insufficient-data` rather than a fabricated metric when support is too small.
+
+## Observed-cohort policy backtests
+
+| Policy | Selection rate | Observed default rate | Selected exposure |
+|---|---:|---:|---:|
+{backtest_rows}
+
+These backtests do **not** estimate what would have happened to historically rejected applicants. Reject inference is unsupported until a defensible rejected-applicant/outcome source and assumptions are available.
 
 ## Canonical CRIX features used by the champion
 
@@ -197,6 +277,8 @@ def main() -> None:
     parser.add_argument("--no-download", action="store_true", help="Fail if --data does not exist")
     args = parser.parse_args()
 
+    validate_feature_provenance(PRIMARY_FEATURE_PROVENANCE, FEATURES)
+
     if not args.data.exists():
         if args.no_download:
             raise FileNotFoundError(args.data)
@@ -218,6 +300,7 @@ def main() -> None:
     # Calibrate the boosted margin on a later origination cohort.
     margin_cal = champion.predict(X_cal, output_margin=True).reshape(-1, 1)
     calibrator = LogisticRegression(C=1000, solver="lbfgs", max_iter=1000).fit(margin_cal, y_cal)
+    p_cal = calibrator.predict_proba(margin_cal)[:, 1]
     margin_test = champion.predict(X_test, output_margin=True)
     p_test = calibrator.predict_proba(margin_test.reshape(-1, 1))[:, 1]
 
@@ -231,6 +314,18 @@ def main() -> None:
     ll = log_loss(y_test, p_test)
     ks = ks_statistic(y_test, p_test)
     challenger_auc = roc_auc_score(y_test, challenger_test)
+
+    governance = build_governance_evidence(
+        y_cal,
+        p_cal,
+        y_test,
+        p_test,
+        test["loanAmount"].to_numpy(dtype=float),
+        feature_names=FEATURES,
+        segments=fixed_segments(test),
+        bootstrap_samples=100,
+        min_segment_count=500,
+    )
 
     artifact_dir = root / "model" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -326,6 +421,7 @@ def main() -> None:
                     "recentCreditGrowth",
                 ],
             },
+            "governance": governance,
             "datasetRegistry": DATASET_REGISTRY,
         },
     }
