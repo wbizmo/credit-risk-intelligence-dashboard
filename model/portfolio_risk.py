@@ -28,7 +28,6 @@ def _splitmix64(values: np.ndarray) -> np.ndarray:
 
 def _uniform_from_counter(counter: np.ndarray, seed: int) -> np.ndarray:
     mixed = _splitmix64(counter ^ np.uint64(seed & 0xFFFFFFFFFFFFFFFF))
-    # Use the top 53 bits so conversion to float64 is exact; avoid 0/1 for inverse CDF.
     u = ((mixed >> np.uint64(11)).astype(np.float64) + 0.5) * (1.0 / (1 << 53))
     return np.clip(u, np.finfo(float).eps, 1.0 - np.finfo(float).eps)
 
@@ -54,21 +53,18 @@ def _norm_ppf(p: np.ndarray | Iterable[float]) -> np.ndarray:
     low = p < plow
     if np.any(low):
         q = np.sqrt(-2.0 * np.log(p[low]))
-        out[low] = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / \
-                   ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0)
+        out[low] = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0)
 
     high = p > phigh
     if np.any(high):
         q = np.sqrt(-2.0 * np.log(1.0 - p[high]))
-        out[high] = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / \
-                    ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0)
+        out[high] = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1.0)
 
     mid = ~(low | high)
     if np.any(mid):
         q = p[mid] - 0.5
         r = q * q
-        out[mid] = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * q / \
-                   (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1.0)
+        out[mid] = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1.0)
     return out
 
 
@@ -77,6 +73,11 @@ def _validate_quantiles(quantiles: Iterable[float]) -> tuple[float, ...]:
     if not result or any((not math.isfinite(q) or q <= 0.0 or q >= 1.0) for q in result):
         raise ValueError("quantiles must be finite probabilities strictly between 0 and 1")
     return result
+
+
+def _scenario_losses(defaults: np.ndarray, loss_given_default: np.ndarray) -> np.ndarray:
+    # Fixed axis-1 reduction avoids BLAS choosing a batch-size-dependent accumulation path.
+    return np.sum(defaults.astype(np.float64) * loss_given_default[None, :], axis=1, dtype=np.float64)
 
 
 def simulate_portfolio(
@@ -130,7 +131,7 @@ def simulate_portfolio(
         idiosyncratic = _norm_ppf(_uniform_from_counter(counters, seed ^ 0x5A5A5A5A))
         latent = sqrt_rho * systematic[:, None] + sqrt_idio * idiosyncratic
         defaults = latent < thresholds[None, :]
-        losses[start:stop] = defaults @ loss_given_default
+        losses[start:stop] = _scenario_losses(defaults, loss_given_default)
 
     expected = float(np.mean(losses))
     unexpected = float(np.std(losses, ddof=0))
@@ -175,7 +176,7 @@ def simulate_portfolio(
                     counters = scenario_index[:, None] * np.uint64(n) + np.arange(n, dtype=np.uint64)[None, :]
                     idio = _norm_ppf(_uniform_from_counter(counters, seed ^ 0x5A5A5A5A))
                     defaults = (sqrt_rho * systematic[:, None] + sqrt_idio * idio) < thresholds[None, :]
-                    totals += np.sum(defaults[local_mask] * loss_given_default[None, :], axis=0)
+                    totals += np.sum(defaults[local_mask].astype(np.float64) * loss_given_default[None, :], axis=0, dtype=np.float64)
                 contributions[str(q)] = (totals / tail_count).tolist()
 
     digest = hashlib.sha256(losses.astype("<f8", copy=False).tobytes()).hexdigest()
@@ -191,10 +192,7 @@ def simulate_portfolio(
         "expectedShortfall": es,
         "tailSupport": support,
         "tailContributions": contributions,
-        "independentBaseline": {
-            "expectedLoss": independent_expected,
-            "unexpectedLoss": independent_unexpected,
-        },
+        "independentBaseline": {"expectedLoss": independent_expected, "unexpectedLoss": independent_unexpected},
         "monteCarlo": {"expectedLossStdError": stderr},
         "lossDigest": digest,
         "status": "research-only; not regulatory capital or bank validation",
