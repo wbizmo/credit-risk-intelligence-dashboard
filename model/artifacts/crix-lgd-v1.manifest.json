@@ -1,0 +1,51 @@
+{
+  "artifactSchemaVersion": 1,
+  "artifactSha256": "9dfebcc779245547f78490acef7de87612e61c9ca130483d9ab444f7b64e4a69",
+  "datasets": [
+    {
+      "id": "lendingclub-lifecycle-2007-2014-mirror",
+      "license": "MIT (mirror metadata; underlying LendingClub provenance retained as research limitation)",
+      "product": "unsecured-personal-loan",
+      "sourceRows": 466285,
+      "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+      "usableRows": 445252
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "lifecycle-lgd-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "baselineExposureWeightedMae": 0.07655523452568232,
+    "baselineMae": 0.07751359013243322,
+    "challengerExposureWeightedMae": 0.07730926488067233,
+    "challengerMae": 0.07841761231863775,
+    "observedMax": 1.0,
+    "observedMin": -0.24658644043964267,
+    "testDefaults": 27833,
+    "trainDefaults": 13806
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-LGD@1.0.0",
+  "modelName": "CRIX-LGD",
+  "parent": null,
+  "product": "unsecured-personal-loan",
+  "randomSeed": 42,
+  "report": "model/RISK_STACK_REPORT.md",
+  "split": {
+    "testLabelsAsOf": "2016-12-31",
+    "testOriginationsAfter": "2012-12-31",
+    "trainLabelsAsOf": "2015-12-31",
+    "trainOriginationsThrough": "2012-12-31"
+  },
+  "status": "research",
+  "target": {
+    "definition": "LGD = (EAD - (recoveries - collection_recovery_fee)) / EAD",
+    "name": "economicLossSeverityProxy",
+    "recoveryTimingSupport": "aggregate-only; source does not provide dated recovery cashflows, so recovery dates are not fabricated"
+  },
+  "trainedAt": "2026-09-12T21:53:02+00:00",
+  "trainingConfigHash": "93290631e8ad55a5df452bdbfe2ac8d4805727271f71232fe9938186daa936de",
+  "trainingRunId": "34721148952",
+  "version": "1.0.0"
+}

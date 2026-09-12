@@ -1,4 +1,5 @@
 import rawArtifact from "../../model/artifacts/crix-monoboost-v2.json";
+import { runtimeManifestMetadata, verifyRuntimeArtifactManifest } from "./registry";
 import type {
   ApplicationInput,
   Counterfactual,
@@ -425,7 +426,7 @@ export function modelMetadata() {
     metrics: artifact.metrics,
     diagnostics: artifact.diagnostics,
     trainingBounds: artifact.trainingBounds,
-    training: artifact.training,
+    training: { ...artifact.training, registry: runtimeManifestMetadata() },
     treeCount: artifact.trees.length,
     policy: POLICY,
     sensitivity: { method: SENSITIVITY.method, version: SENSITIVITY.version },
@@ -433,6 +434,7 @@ export function modelMetadata() {
 }
 
 export function verifyModelIntegrity(): boolean {
+  if (!verifyRuntimeArtifactManifest()) return false;
   if (artifact.schemaVersion !== 2 || !artifact.name || !artifact.version || artifact.trees.length === 0) return false;
   if (artifact.featureNames.length !== artifact.monotoneConstraints.length) return false;
   if (!Number.isFinite(artifact.calibration.slope) || !Number.isFinite(artifact.calibration.intercept)) return false;

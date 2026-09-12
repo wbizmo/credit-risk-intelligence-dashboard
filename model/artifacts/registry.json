@@ -1,0 +1,65 @@
+{
+  "models": {
+    "CRIX-CCF-Taiwan@1.0.0": {
+      "artifact": "model/artifacts/crix-ccf-taiwan-v1.json",
+      "artifactSha256": "2ee02a0abb23341f0c2a49d3e805e826de09a5648cd6a52d680ea70c93f568e4",
+      "featureContractVersion": "uci-taiwan-ccf-v1",
+      "manifest": "model/artifacts/crix-ccf-taiwan-v1.manifest.json",
+      "modelId": "CRIX-CCF-Taiwan@1.0.0",
+      "modelName": "CRIX-CCF-Taiwan",
+      "status": "research",
+      "version": "1.0.0"
+    },
+    "CRIX-EAD-Installment@1.0.0": {
+      "artifact": "model/artifacts/crix-ead-installment-v1.json",
+      "artifactSha256": "c7c7bdc558b8b6152abe72970599f471371a0c9f3083e23d82c72af43f600a4a",
+      "featureContractVersion": "lifecycle-ead-v1",
+      "manifest": "model/artifacts/crix-ead-installment-v1.manifest.json",
+      "modelId": "CRIX-EAD-Installment@1.0.0",
+      "modelName": "CRIX-EAD-Installment",
+      "status": "research",
+      "version": "1.0.0"
+    },
+    "CRIX-LGD@1.0.0": {
+      "artifact": "model/artifacts/crix-lgd-v1.json",
+      "artifactSha256": "9dfebcc779245547f78490acef7de87612e61c9ca130483d9ab444f7b64e4a69",
+      "featureContractVersion": "lifecycle-lgd-v1",
+      "manifest": "model/artifacts/crix-lgd-v1.manifest.json",
+      "modelId": "CRIX-LGD@1.0.0",
+      "modelName": "CRIX-LGD",
+      "status": "research",
+      "version": "1.0.0"
+    },
+    "CRIX-LifetimePD@1.0.0": {
+      "artifact": "model/artifacts/crix-lifetime-pd-v1.json",
+      "artifactSha256": "442886b04b557f54da0298e3075adeddfd690d2a4111242b6a17084b27b089ad",
+      "featureContractVersion": "lifecycle-survival-v1",
+      "manifest": "model/artifacts/crix-lifetime-pd-v1.manifest.json",
+      "modelId": "CRIX-LifetimePD@1.0.0",
+      "modelName": "CRIX-LifetimePD",
+      "status": "research",
+      "version": "1.0.0"
+    },
+    "CRIX-MonoBoost@2.0.0": {
+      "artifact": "model/artifacts/crix-monoboost-v2.json",
+      "artifactSha256": "1ed978ccc0f59420555d408d97c5f8909e953770709f1fed5ca482e99e649075",
+      "featureContractVersion": "crix-granting-features-v1",
+      "manifest": "model/artifacts/crix-monoboost-v2.manifest.json",
+      "modelId": "CRIX-MonoBoost@2.0.0",
+      "modelName": "CRIX-MonoBoost",
+      "status": "approved-demo-champion",
+      "version": "2.0.0"
+    },
+    "CRIX-Transitions-Taiwan@1.0.0": {
+      "artifact": "model/artifacts/crix-transitions-taiwan-v1.json",
+      "artifactSha256": "0e03d848887722a153d48f7cfbcbbb6f0a3ada24cbafe36d1448d944ad8f18de",
+      "featureContractVersion": "uci-taiwan-transitions-v1",
+      "manifest": "model/artifacts/crix-transitions-taiwan-v1.manifest.json",
+      "modelId": "CRIX-Transitions-Taiwan@1.0.0",
+      "modelName": "CRIX-Transitions-Taiwan",
+      "status": "research",
+      "version": "1.0.0"
+    }
+  },
+  "schemaVersion": 1
+}

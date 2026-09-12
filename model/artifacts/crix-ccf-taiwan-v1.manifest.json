@@ -1,0 +1,48 @@
+{
+  "artifactSchemaVersion": 1,
+  "artifactSha256": "2ee02a0abb23341f0c2a49d3e805e826de09a5648cd6a52d680ea70c93f568e4",
+  "datasets": [
+    {
+      "doi": "10.24432/C55S3H",
+      "id": "uci-taiwan-credit-card-default",
+      "license": "CC-BY-4.0",
+      "product": "revolving-credit-card",
+      "retrievedDataFingerprintSha256": "0c41e1e163fe918f22d4c138a7e13ef0c3c50ff3c4d396f4ced14b3902190e51",
+      "rows": 30000
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "uci-taiwan-ccf-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "mae": 0.3449535919704457,
+    "rawFiniteSamples": 143772,
+    "rawProxyMax": 938.0,
+    "rawProxyMin": -2856.1428571428573,
+    "rmse": 1.1241495247173552,
+    "testSamples": 27947,
+    "trainingSupportSamples": 143373
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-CCF-Taiwan@1.0.0",
+  "modelName": "CRIX-CCF-Taiwan",
+  "parent": null,
+  "product": "revolving-credit-card",
+  "randomSeed": 42,
+  "report": "model/RISK_STACK_REPORT.md",
+  "split": {
+    "testTransition": "Aug-Sep 2005",
+    "trainTransitions": "Apr-Aug 2005"
+  },
+  "status": "research",
+  "target": {
+    "definition": "net-balance-change CCF proxy = (next statement balance - prior statement balance) / prior undrawn limit",
+    "name": "netBalanceChangeCcfProxy",
+    "warning": "This is not pure draw CCF: statement balance changes also reflect payments, interest, fees and purchases."
+  },
+  "trainedAt": "2026-09-12T21:53:04+00:00",
+  "trainingConfigHash": "3f6358639a3523b664518ee198e3752a5c8f1b1d565104113260f1929a47ac1b",
+  "trainingRunId": "34721148952",
+  "version": "1.0.0"
+}

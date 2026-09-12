@@ -1,0 +1,20 @@
+{
+  "counts": {
+    "calibration": 274200,
+    "decision": 157119,
+    "evaluable": 1269389,
+    "train": 786730
+  },
+  "featureContractVersion": "crix-granting-features-v1",
+  "mode": "retrospective-resolved",
+  "snapshotId": "2f36c84ce04a69d7fa06ec6b",
+  "sourceSha256": "207d65b2712f775a91404496ab27c786ac0da6b0f977f849e6d5d8149e925acc",
+  "windows": {
+    "calibrationLabelsAsOf": "2016-12-31",
+    "calibrationOriginationsEnd": "2016-12-31",
+    "decisionEnd": "2017-12-31",
+    "outcomeCutoff": "2018-12-31",
+    "trainLabelsAsOf": "2015-12-31",
+    "trainOriginationsEnd": "2015-12-31"
+  }
+}

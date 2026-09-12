@@ -1,0 +1,47 @@
+{
+  "artifactSchemaVersion": 1,
+  "artifactSha256": "c7c7bdc558b8b6152abe72970599f471371a0c9f3083e23d82c72af43f600a4a",
+  "datasets": [
+    {
+      "id": "lendingclub-lifecycle-2007-2014-mirror",
+      "license": "MIT (mirror metadata; underlying LendingClub provenance retained as research limitation)",
+      "product": "unsecured-personal-loan",
+      "sourceRows": 466285,
+      "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+      "usableRows": 445252
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "lifecycle-ead-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "baselineDollarMae": 722.3091099146827,
+    "challengerDollarMae": 340.9592326209186,
+    "testDefaults": 27833,
+    "trainDefaults": 13806
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-EAD-Installment@1.0.0",
+  "modelName": "CRIX-EAD-Installment",
+  "parent": null,
+  "product": "unsecured-personal-loan",
+  "randomSeed": 42,
+  "report": "model/RISK_STACK_REPORT.md",
+  "split": {
+    "testLabelsAsOf": "2016-12-31",
+    "testOriginationsAfter": "2012-12-31",
+    "trainLabelsAsOf": "2015-12-31",
+    "trainOriginationsThrough": "2012-12-31"
+  },
+  "status": "research",
+  "target": {
+    "definition": "principal exposure proxy at default = max(funded_amnt - total_rec_prncp, 0)",
+    "horizon": "conditional on default month proxy",
+    "name": "exposureAtDefaultProxy"
+  },
+  "trainedAt": "2026-09-12T21:53:02+00:00",
+  "trainingConfigHash": "3ca72c508874e5a25ad2b7393c1f699a3dc931c6098655c3d0413c6c0b993805",
+  "trainingRunId": "34721148952",
+  "version": "1.0.0"
+}

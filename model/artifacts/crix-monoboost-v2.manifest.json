@@ -1,0 +1,65 @@
+{
+  "artifactSchemaVersion": 2,
+  "artifactSha256": "1ed978ccc0f59420555d408d97c5f8909e953770709f1fed5ca482e99e649075",
+  "datasets": [
+    {
+      "doi": "10.5281/zenodo.11295916",
+      "id": "lendingclub-granting-0.1",
+      "license": "CC-BY-4.0",
+      "localSha256": "207d65b2712f775a91404496ab27c786ac0da6b0f977f849e6d5d8149e925acc",
+      "product": "unsecured-personal-loan",
+      "sourceMd5": "b019384d6bc65bf2a3e839362e4ff502",
+      "version": "0.1"
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "crix-granting-features-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "auc": 0.659362,
+    "brier": 0.164529,
+    "challengerAuc": 0.657837,
+    "defaultRate": 0.224187,
+    "ks": 0.230028,
+    "logLoss": 0.504344,
+    "testSamples": 157119
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-MonoBoost@2.0.0",
+  "modelName": "CRIX-MonoBoost",
+  "parent": null,
+  "product": "unsecured-personal-loan",
+  "randomSeed": 42,
+  "report": "model/TRAINING_REPORT.md",
+  "split": {
+    "calibration": {
+      "defaultRate": 0.227112,
+      "end": "2016-12-01",
+      "samples": 274200,
+      "start": "2016-01-01"
+    },
+    "test": {
+      "defaultRate": 0.224187,
+      "end": "2017-12-01",
+      "samples": 157119,
+      "start": "2017-01-01"
+    },
+    "train": {
+      "defaultRate": 0.181736,
+      "end": "2015-12-01",
+      "samples": 786730,
+      "start": "2007-06-01"
+    }
+  },
+  "status": "approved-demo-champion",
+  "target": {
+    "definition": "Probability that a granted LendingClub loan resolves as charged-off/default rather than fully paid.",
+    "horizon": "final-loan-resolution (mixed contractual terms; not a 12-month PD)",
+    "name": "originationDefaultRisk"
+  },
+  "trainedAt": "2026-09-08",
+  "trainingConfigHash": "16905472216ca9a05fafee21ba0590a40db155a71bdbe6a23fde1959a33d262f",
+  "trainingRunId": "34721148952",
+  "version": "2.0.0"
+}

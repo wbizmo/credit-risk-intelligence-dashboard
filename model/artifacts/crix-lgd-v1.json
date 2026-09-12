@@ -1,0 +1,73 @@
+{
+  "discountRate": 0.0,
+  "featureNames": [
+    "debtToIncome",
+    "loanToIncome",
+    "employmentYears",
+    "termMonths",
+    "durationMonths",
+    "observedEadRate"
+  ],
+  "metrics": {
+    "baselineExposureWeightedMae": 0.07655523452568232,
+    "baselineMae": 0.07751359013243322,
+    "challengerExposureWeightedMae": 0.07730926488067233,
+    "challengerMae": 0.07841761231863775,
+    "observedMax": 1.0,
+    "observedMin": -0.24658644043964267,
+    "testDefaults": 27833,
+    "trainDefaults": 13806
+  },
+  "models": {
+    "baseline": {
+      "metrics": {
+        "mae": 0.07751359013243322,
+        "rmse": 0.0907322589597643
+      },
+      "model": {
+        "alpha": 10.0,
+        "coefficients": [
+          -0.0008474587284251087,
+          0.0017741867735320963,
+          -0.00011518902276963631,
+          0.0027485139469208557,
+          -0.014503430392958495,
+          -0.00247891523712218
+        ],
+        "intercept": 0.9162276944927469,
+        "means": [
+          0.16083822975517892,
+          0.23137514765607517,
+          5.513617267854556,
+          43.975662755323775,
+          18.795233956250904,
+          0.6479669675247459
+        ],
+        "method": "ridge",
+        "scales": [
+          0.07394307767128448,
+          0.12477405324474654,
+          3.50660517808265,
+          11.305074512850933,
+          10.273516168423813,
+          0.23903967593303765
+        ]
+      }
+    },
+    "challenger": {
+      "metrics": {
+        "mae": 0.07841761231863775,
+        "rmse": 0.09251509328432675
+      },
+      "name": "hist-gradient-boosting"
+    },
+    "recommended": "baseline"
+  },
+  "name": "CRIX-LGD",
+  "product": "unsecured-personal-loan",
+  "recoveryTimingSupport": "aggregate-only; source does not provide dated recovery cashflows, so recovery dates are not fabricated",
+  "schemaVersion": 1,
+  "target": "LGD = (EAD - (recoveries - collection_recovery_fee)) / EAD",
+  "v3RuntimeBaseline": "CRIX v3 engineering LGD remains unchanged and separately versioned",
+  "version": "1.0.0"
+}

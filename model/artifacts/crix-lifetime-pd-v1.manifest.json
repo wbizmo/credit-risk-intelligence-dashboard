@@ -1,0 +1,61 @@
+{
+  "artifactSchemaVersion": 1,
+  "artifactSha256": "442886b04b557f54da0298e3075adeddfd690d2a4111242b6a17084b27b089ad",
+  "datasets": [
+    {
+      "id": "lendingclub-lifecycle-2007-2014-mirror",
+      "license": "MIT (mirror metadata; underlying LendingClub provenance retained as research limitation)",
+      "product": "unsecured-personal-loan",
+      "sourceRows": 466285,
+      "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+      "usableRows": 445252
+    }
+  ],
+  "environmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65",
+  "featureContractVersion": "lifecycle-survival-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "manifestSchemaVersion": 1,
+  "metrics": {
+    "decisionSamples": 51442,
+    "events": 2996,
+    "trainingLoans": 19306
+  },
+  "modelCard": "MODEL_CARD.md",
+  "modelId": "CRIX-LifetimePD@1.0.0",
+  "modelName": "CRIX-LifetimePD",
+  "parent": null,
+  "product": "unsecured-personal-loan",
+  "randomSeed": 42,
+  "report": "model/RISK_STACK_REPORT.md",
+  "split": {
+    "counts": {
+      "calibration": 18946,
+      "decision": 51442,
+      "evaluable": 445252,
+      "train": 19306
+    },
+    "featureContractVersion": "lifecycle-origination-v1",
+    "mode": "point-in-time",
+    "snapshotId": "0ae28703d851371670f3afc2",
+    "sourceSha256": "43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545",
+    "windows": {
+      "calibrationLabelsAsOf": "2015-12-31",
+      "calibrationOriginationsEnd": "2011-12-31",
+      "decisionEnd": "2012-12-31",
+      "outcomeCutoff": "2016-12-31",
+      "trainLabelsAsOf": "2014-12-31",
+      "trainOriginationsEnd": "2010-12-31"
+    }
+  },
+  "status": "research",
+  "target": {
+    "censoring": "fully-paid loans are competing terminal non-default outcomes; unresolved statuses are right-censored at last_credit_pull_d",
+    "definition": "Discrete-time hazard of charged-off/default resolution; last_pymnt_d is used as an endpoint proxy, not claimed to be an exact charge-off date.",
+    "maxHorizonMonths": 36,
+    "name": "timeToResolvedDefaultProxy"
+  },
+  "trainedAt": "2026-09-12T21:53:02+00:00",
+  "trainingConfigHash": "73eccb4198d70c2ae95e1a81fb5015e218ce6a95e2eb3422e7c5bc618b09a1cb",
+  "trainingRunId": "34721148952",
+  "version": "1.0.0"
+}
