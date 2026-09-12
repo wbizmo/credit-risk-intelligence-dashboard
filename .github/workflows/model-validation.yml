@@ -38,6 +38,11 @@ jobs:
         with:
           path: model/data/loan_data_2007_2014.csv
           key: crix-lifecycle-43ecf2dcf074c87215078f33019c1282d9edb0d3569ce052d5ad6a597004c545
+      - name: Restore public UNRATE research snapshot
+        uses: actions/cache@v4
+        with:
+          path: model/public_data/UNRATE_2006_2014.csv
+          key: crix-fred-unrate-revised-2006-2014-v1
       - name: Install model dependencies
         run: pip install -r model/requirements.txt
       - name: Run fast model invariant suite under full environment
@@ -91,6 +96,39 @@ jobs:
           python model/research_validation.py compare \
             --generated /tmp/crix-risk-stack-validation/model/artifacts \
             --report model/artifacts/research-retrain-validation.json
+      - name: Generate integrated roadmap 20-24 research evidence
+        run: python model/train_advanced_risk.py
+      - name: Verify advanced-risk evidence and accounting/capital separation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          artifact = json.loads(Path("model/artifacts/crix-advanced-risk-v1.json").read_text())
+          macro = artifact["macro"]
+          portfolio = artifact["portfolio"]
+          capital = artifact["capital"]
+          decision = artifact["decisioning"]
+          ifrs9 = artifact["ifrs9Style"]
+
+          assert artifact["version"] == "1.0.0" and artifact["status"] == "research"
+          assert macro["driver"] == "UNRATE" and macro["causalityClaim"] is False
+          assert macro["sourceSha256"] and "revised historical" in macro["seriesSemantics"]
+          assert macro["metrics"]["trainSamples"] > 2_000 and macro["metrics"]["ootSamples"] > 2_000
+          assert portfolio["baseline"]["scenarios"] >= 100_000
+          assert portfolio["baseline"]["tailSupport"]["0.999"]["supported"] is True
+          assert portfolio["baseline"]["var"]["0.999"] is not None
+          assert capital["economic"]["economicCapital"] >= 0
+          assert capital["irbStyleAggregateCapital"] >= 0 and capital["irbStyleAggregateRwa"] >= 0
+          assert ifrs9["stage2"]["ecl"] >= ifrs9["stage1"]["ecl"] - 1e-10
+          assert decision["result"]["status"] == "optimal"
+          for key in ("exposure", "expectedLoss", "expectedReturn"):
+              assert abs(decision["independentRevalidation"][key] - decision["result"][key]) < 1e-8, key
+          assert artifact["runtimeContract"].startswith("/api/v3")
+          assert Path("model/ADVANCED_RISK_REPORT.md").is_file()
+          assert Path("model/public_data/UNRATE_2006_2014.csv").is_file()
+          print("CRIX roadmap 20-24 integrated research evidence gate passed")
+          PY
       - name: Verify published artifacts carry governance and integrity evidence
         run: |
           python - <<'PY'
@@ -177,7 +215,10 @@ jobs:
             model/artifacts/crix-ead-installment-v1.json
             model/artifacts/crix-ccf-taiwan-v1.json
             model/artifacts/crix-lgd-v1.json
+            model/artifacts/crix-advanced-risk-v1.json
             model/artifacts/snapshot-*.json
+            model/public_data/UNRATE_2006_2014.csv
             model/TRAINING_REPORT.md
             model/RISK_STACK_REPORT.md
+            model/ADVANCED_RISK_REPORT.md
           if-no-files-found: error
