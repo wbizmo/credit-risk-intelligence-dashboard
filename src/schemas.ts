@@ -42,13 +42,40 @@ export const reasonCodeSchema = {
   }
 } as const;
 
+export const policyReasonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["code", "label", "decision"],
+  properties: {
+    code: { type: "string" },
+    label: { type: "string" },
+    decision: { type: "string", enum: ["REVIEW", "DECLINE"] }
+  }
+} as const;
+
+export const counterfactualSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["feature", "label", "from", "to", "pdBefore", "pdAfter", "trainingLowerBound", "trainingUpperBound"],
+  properties: {
+    feature: { type: "string" },
+    label: { type: "string" },
+    from: { type: "number" },
+    to: { type: "number" },
+    pdBefore: { type: "number", minimum: 0, maximum: 1 },
+    pdAfter: { type: "number", minimum: 0, maximum: 1 },
+    trainingLowerBound: { type: "number" },
+    trainingUpperBound: { type: "number" }
+  }
+} as const;
+
 export const riskResultSchema = {
   type: "object",
   additionalProperties: false,
   required: [
     "pd", "pdHorizon", "challengerPd", "disagreement", "lgd", "ead", "expectedLoss", "expectedLossRate",
-    "score", "grade", "decision", "confidence", "apr", "reasons", "modelVersion", "policyVersion",
-    "outOfDistribution", "flags"
+    "score", "grade", "decision", "confidence", "apr", "reasons", "policyReasons", "counterfactuals",
+    "modelVersion", "policyVersion", "outOfDistribution", "flags"
   ],
   properties: {
     pd: { type: "number", minimum: 0, maximum: 1 },
@@ -65,6 +92,8 @@ export const riskResultSchema = {
     confidence: { type: "number", minimum: 0, maximum: 1 },
     apr: { type: "number", minimum: 0 },
     reasons: { type: "array", maxItems: 5, items: reasonCodeSchema },
+    policyReasons: { type: "array", maxItems: 5, items: policyReasonSchema },
+    counterfactuals: { type: "array", maxItems: 5, items: counterfactualSchema },
     modelVersion: { type: "string" },
     policyVersion: { type: "string" },
     outOfDistribution: { type: "array", items: { type: "string" } },
@@ -133,10 +162,12 @@ export const stressRequestSchema = {
 export const stressResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["requestId", "apiVersion", "severity", "input", "baseline", "stressed", "delta"],
+  required: ["requestId", "apiVersion", "method", "scenarioVersion", "severity", "input", "baseline", "stressed", "delta"],
   properties: {
     requestId: { type: "string" },
     apiVersion: { type: "string" },
+    method: { type: "string", enum: ["deterministic-borrower-sensitivity"] },
+    scenarioVersion: { type: "string" },
     severity: { type: "string", enum: ["mild", "severe"] },
     input: applicationSchema,
     baseline: riskResultSchema,
@@ -214,7 +245,7 @@ export const modelResponseSchema = {
   required: [
     "requestId", "apiVersion", "name", "version", "trainedAt", "target", "features",
     "monotoneConstraints", "calibration", "challenger", "metrics", "diagnostics",
-    "trainingBounds", "training", "treeCount", "policy"
+    "trainingBounds", "training", "treeCount", "policy", "sensitivity"
   ],
   properties: {
     requestId: { type: "string" },
@@ -292,6 +323,15 @@ export const modelResponseSchema = {
     },
     training: { type: "object", additionalProperties: true },
     treeCount: { type: "integer", minimum: 1 },
-    policy: { type: "object", additionalProperties: true }
+    policy: { type: "object", additionalProperties: true },
+    sensitivity: {
+      type: "object",
+      additionalProperties: false,
+      required: ["method", "version"],
+      properties: {
+        method: { type: "string", enum: ["deterministic-borrower-sensitivity"] },
+        version: { type: "string" }
+      }
+    }
   }
 } as const;
