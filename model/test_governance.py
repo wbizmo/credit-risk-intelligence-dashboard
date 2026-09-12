@@ -48,6 +48,20 @@ class ProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outcome-derived"):
             validate_feature_provenance(provenance, ["futureRecovery"])
 
+    def test_feature_provenance_rejects_policy_derived_predictor(self) -> None:
+        provenance = [
+            FeatureProvenance(
+                feature="historicalGrade",
+                sources=("grade",),
+                availability="application-time",
+                max_lookback_days=0,
+                policy_derived=True,
+            )
+        ]
+
+        with self.assertRaisesRegex(ValueError, "policy-derived"):
+            validate_feature_provenance(provenance, ["historicalGrade"])
+
     def test_primary_feature_provenance_matches_the_v3_champion_contract(self) -> None:
         names = [item.feature for item in PRIMARY_FEATURE_PROVENANCE]
         self.assertEqual(names, ["debtToIncome", "loanToIncome", "creditScore", "employmentYears"])
@@ -71,6 +85,12 @@ class ProvenanceTests(unittest.TestCase):
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_binary_outcome_validation_rejects_fractional_labels_before_casting(self) -> None:
+        y = np.array([0.0, 0.5, 1.0])
+        p = np.array([0.1, 0.5, 0.9])
+        with self.assertRaisesRegex(ValueError, "binary"):
+            calibration_by_bins(y, p, bins=3, min_count=1, min_events=0)
+
     def test_calibration_bins_handle_duplicate_quantile_edges(self) -> None:
         y = np.array([0, 1, 0, 1, 1, 0, 1, 0], dtype=np.int8)
         p = np.array([0.25] * len(y), dtype=float)
