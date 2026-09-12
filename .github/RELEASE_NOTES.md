@@ -1,83 +1,90 @@
-# CRIX v3.0.0 — Real-World Credit Risk
+# CRIX v3.1.0 — Advanced Credit-Risk Research Stack
 
-CRIX v3 is the first release whose primary risk model is trained, calibrated and evaluated on **real historical credit outcomes** rather than synthetic borrowers.
+CRIX v3.1 extends the real-data v3 foundation into a broader, auditable credit-risk research stack while deliberately keeping the live `/api/v3` decisioning contract stable.
 
-## Breaking API changes
+The deployed runtime champion is still **CRIX-MonoBoost 2.0.0** and `pd` still means **final-loan-resolution default risk**. The new lifetime, migration, LGD/EAD, portfolio, macro, IFRS 9-style, capital and optimisation capabilities are offline research modules rather than silently replacing the production-facing API semantics.
 
-- The versioned API namespace moves from `/api/v2` to `/api/v3`.
-- `creditScore` is now a required application field.
-- `pd` now means **final-loan-resolution default risk**, not the synthetic 12-month PD used by v2.x.
-- Every scoring response includes `pdHorizon` so target semantics travel with the probability.
+## Point-in-time governance and reproducibility
 
-## CRIX-MonoBoost 2.0
+- Machine-checkable feature provenance and leakage guards.
+- Granted-loans-only population conditioning with explicit reject-inference limitations.
+- Segmented calibration, bootstrap uncertainty, calibration intercept/slope and PSI stability evidence.
+- Historical as-of snapshots / time-machine infrastructure.
+- Model registry manifests with SHA-256 artifact integrity checks.
+- Cold-cache isolated research retraining that hydrates verified source files rather than assuming Actions cache hits.
 
-The primary champion is trained on the open **Lending Club loan dataset for granting models** distributed through Zenodo. The research cohort is deliberately curated to application-time variables to avoid post-underwriting leakage.
+## Lifetime PD, transitions, LGD and EAD
 
-- DOI: `10.5281/zenodo.11295916`
-- License: CC-BY-4.0
-- Source rows: **1,347,681**
-- CRIX-harmonized rows: **1,269,389**
-- Immutable source MD5: `b019384d6bc65bf2a3e839362e4ff502`
-- Training cohort: **786,730** originations through 2015
-- Calibration cohort: **274,200** 2016 originations
-- Out-of-time test: **157,119** 2017 originations
+- Censoring-aware lifetime PD term structures with 3/6/12/24/36-month research horizons.
+- Delinquency-state transition research with cure/backward migration rather than one-way deterioration assumptions.
+- Empirical LGD research using recovery severity/timing evidence.
+- Empirical instalment EAD research plus a separate revolving-credit / CCF research path.
+- Product and target-horizon separation is preserved; incompatible datasets are not pooled into a synthetic universal default model.
 
-Primary OOT diagnostics:
+## Correlated portfolio loss simulation
 
-| Metric | Value |
-|---|---:|
-| ROC-AUC | **0.6594** |
-| KS | **0.2300** |
-| Brier score | **0.1645** |
-| Log loss | **0.5043** |
-| OOT default rate | **22.42%** |
-| Logistic challenger ROC-AUC | **0.6578** |
+v3.1 adds a deterministic one-factor correlated-default Monte Carlo research engine with bounded-memory chunking.
 
-The champion uses only mappings the source genuinely supports: debt-to-income, requested-loan-to-income, `fico_n` as the external bureau-style score, and normalized employment tenure. CRIX does not pretend missing bureau fields were present in the training cohort.
+It produces:
 
-The old hand-authored challenger has also been replaced with a standardized **real-data logistic challenger** trained on the same point-in-time feature contract. Out-of-distribution support is derived from the real training distribution.
+- expected loss and unexpected loss;
+- loss variance;
+- VaR and expected shortfall at supported confidence levels;
+- tail-risk contributions that reconcile to the portfolio tail metric;
+- an independent-default comparison baseline;
+- deterministic replay from a fixed seed.
 
-## Multi-dataset adaptation without dataset soup
+The counter-based random construction and fixed row-wise loss reduction make seeded results invariant to chunk size. CRIX also withholds 99.9% tail output when the number of scenarios is too small to support a meaningful estimate.
 
-v3 also adds real external evidence while keeping incompatible products and target horizons separate.
+## Empirical macro stress research
 
-### UCI Taiwan credit-card behavior
+The previous `/api/v3/risk/stress` endpoint remains correctly labelled **deterministic borrower sensitivity**.
 
-A separate research-only `CRIX-Behavior-TW 1.0.0` model uses six-month utilization, on-time-payment behavior, delayed-payment months and normalized balance growth across **30,000** real bank clients.
+v3.1 adds a separate point-in-time macro research layer. The current empirical demonstration uses a frozen, provenance-tracked U.S. unemployment-rate series aligned to the historical LendingClub research vintages. The exact macro snapshot is committed with the code so CI/research reproduction does not depend on FRED network availability at run time.
 
-- 10-fold CV ROC-AUC: **0.7606**
-- Brier score: **0.1416**
-- Log loss: **0.4464**
-- `SEX`, `EDUCATION`, `MARRIAGE` and `AGE` are explicitly excluded.
+This is a research macro-conditioned stress model, not a claim of institutionally validated macroeconometric stress testing.
 
-Its target is next-month credit-card default, so its probability is **not blended** into the personal-loan champion or policy.
+## IFRS 9-style ECL research
 
-### German structural benchmarks
+Added an accounting-research engine for:
 
-- UCI Statlog German Credit: **0.6672** 10-fold CV ROC-AUC.
-- Corrected UCI South German Credit: **0.6718** 10-fold CV ROC-AUC.
+- Stage 1 / Stage 2 / Stage 3 classification;
+- SICR and days-past-due backstops;
+- default and cure/probation semantics;
+- scenario-weighted expected credit loss;
+- marginal PD conversion from cumulative term structures;
+- EIR-style discounting.
 
-The corrected South German representation is preferred because UCI documents coding problems in the legacy Statlog representation. These datasets remain structural benchmarks rather than being forced into the LendingClub feature contract.
+The implementation is intentionally labelled **IFRS 9-style research**. It is not represented as accounting-policy approval or regulatory compliance.
 
-Home Credit, Give Me Some Credit, FICO HELOC, Freddie Mac and Fannie Mae remain explicitly registered as future/gated or product-specific sources. CRIX does not claim to have trained on data it did not actually obtain under the applicable access terms.
+## Basel-style and economic-capital research
 
-## Reproducibility and resilience
+Added research analytics that keep expected loss separate from unexpected/tail capital, including:
 
-- Added a reproducible GitHub Actions model-development workflow.
-- Added checksum-verified Zenodo downloads with bounded retries and an alternate Records API endpoint.
-- Added a cache keyed to the immutable LendingClub source MD5.
-- Added committed primary training and external benchmark reports/artifacts.
-- Added real-training-support OOD metadata and richer `/api/v3/model` provenance.
-- Stabilized npm dependency resolution consistently across CI and Render.
+- IRB-inspired capital calculations;
+- economic capital from portfolio tail loss;
+- tail-capital contribution reconciliation;
+- exposure / LGD / PD sensitivity invariants.
 
-## Governance, API and brand
+These are **Basel-style / economic-capital research** outputs, not a statement of regulatory capital compliance for any jurisdiction or institution.
 
-- `CRIX-Policy 3.0` remains separate from statistical model output.
-- Rewritten model card documents target semantics, selection bias, transfer limits, calibration and production gates.
-- Security guidance explicitly prohibits sending real consumer data to the public demo.
-- Architecture and README now distinguish primary runtime modeling from product-specific research artifacts.
-- Added the new CRIX v3 risk-grid wordmark and a full changelog.
+## Challenger governance and portfolio optimisation
+
+The actual embedded real-data logistic challenger is now evaluated against CRIX-MonoBoost on the same LendingClub calibration/OOT cohorts rather than being judged on AUC alone.
+
+Governance evidence includes calibration, Brier score, log loss, PSI/stability, bootstrap uncertainty, segment results and deployment-performance context.
+
+The new deterministic portfolio optimiser supports bounded research allocation under explicit constraints such as budget and expected-loss limits. It reports infeasibility instead of silently relaxing constraints, and exact toy portfolios are checked against exhaustive enumeration.
+
+## Engineering discipline
+
+- Full Python model/governance suite: **57 tests**.
+- CI and model-validation gates are both required before merge.
+- Live scoring hot-path work remains bounded and synchronous batch scoring remains capped.
+- Heavy Monte Carlo / optimisation work stays offline instead of blocking the Fastify event loop.
+- Fail-closed validation covers invalid probabilities, scenario weights, correlations, exposures and non-finite inputs.
+- `/api/v3` API semantics and the deployed CRIX-MonoBoost 2.0.0 champion remain unchanged.
 
 ## Important model-risk note
 
-Using real historical outcomes is a substantial upgrade in model development; it is **not** production lending approval. Real deployment still requires representative institution-specific data, independent validation, fairness/proxy testing, exact performance-window governance, legal/compliance review, validated LGD/EAD, governed adverse-action reasons, monitoring and formal model-risk approval.
+CRIX is still a public engineering/model-risk research system, **not an approved production lending or regulatory-capital platform**. Real deployment requires representative institution-specific data, independently validated PD/LGD/EAD and macro models, fairness/proxy testing, exact accounting/regulatory policy interpretation, governed adverse-action reasons, audit retention, authentication/authorization, monitoring and formal model-risk/legal/compliance approval.

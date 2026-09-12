@@ -2,21 +2,24 @@
 
 ## System context
 
-CRIX API release: **v3.0.0**  
+CRIX package release: **v3.1.0**  
+API namespace: **`/api/v3`**  
 Bundled primary model: **CRIX-MonoBoost 2.0.0**  
-Secondary research artifact: **CRIX-Behavior-TW 1.0.0**
+Live policy: **CRIX-Policy 3.0**
 
-The API and model versions are intentionally independent. v3 is a major API release because both the required input contract and the probability target semantics changed.
+The package, API, model and policy versions are intentionally independent. v3.1 expands the offline research stack without changing the live v3 probability target or silently promoting research models into runtime scoring.
 
 ## Intended use
 
 CRIX-MonoBoost is an engineering/model-risk demonstration showing how a real-data credit-risk model can be trained with point-in-time discipline, calibrated on later originations, challenged, explained, sensitivity-tested and exposed through a governed API contract.
 
-It is **not approved for real lending decisions**.
+CRIX v3.1 additionally includes offline research modules for lifetime PD, delinquency migration, empirical LGD/EAD, correlated portfolio loss, macro-conditioned stress, IFRS 9-style ECL, Basel-style/economic capital and constrained portfolio optimisation.
+
+It is **not approved for real lending decisions, accounting policy or regulatory-capital use**.
 
 ## Primary target
 
-The primary model estimates:
+The live primary model estimates:
 
 > **Probability that a granted LendingClub loan ultimately resolves as charged-off/default rather than fully paid.**
 
@@ -35,7 +38,7 @@ The API includes `pdHorizon` on every score so downstream clients cannot safely 
 - Source rows: 1,347,681
 - Rows after CRIX harmonization: 1,269,389
 - MD5 lock: `b019384d6bc65bf2a3e839362e4ff502`
-- Curated to variables available at granting/application time, avoiding post-underwriting leakage such as grade, subgrade and realized pricing signals
+- Curated to variables available at granting/application time, avoiding post-underwriting leakage such as realized outcomes/pricing signals
 
 ## Primary feature contract
 
@@ -45,22 +48,20 @@ The v3 champion uses only features that can be mapped honestly from the primary 
 |---|---|---:|
 | `debtToIncome` | LendingClub `dti_n`, converted to a ratio where required | +1 |
 | `loanToIncome` | `loan_amnt / revenue` | +1 |
-| `creditScore` | `fico_n` | -1 |
+| `creditScore` | LendingClub `fico_n` | -1 |
 | `employmentYears` | normalized `emp_length` | -1 |
 
-`annualIncome` and `loanAmount` are also required by the API because `loanToIncome` is computed at runtime and because policy/LGD/EAD use them.
+`annualIncome` and `loanAmount` are also required by the API because `loanToIncome` is computed at runtime and because policy/runtime loss logic uses them.
 
-The broader API still accepts utilization, delinquency, inquiry, trade-age, account-count, liquidity, payment-rate, income-stability and credit-growth context. Those fields may affect policy, deterministic borrower sensitivity, confidence context or deterministic LGD logic, but CRIX does **not** represent them as champion training features when the primary dataset does not contain them.
+The broader API accepts utilization, delinquency, inquiry, trade-age, account-count, liquidity, payment-rate, income-stability and credit-growth context. Those fields may affect policy, deterministic borrower sensitivity, confidence context or deterministic runtime LGD logic, but CRIX does **not** represent them as champion training features when the primary dataset does not contain them.
 
 The HTTP API intentionally does not request borrower names.
 
 ## Point-in-time feature provenance
 
-CRIX now treats application-time availability as a machine-checkable model-development invariant rather than documentation alone. Each champion feature has explicit provenance metadata containing its source field(s), availability semantics, allowed target and whether it is outcome-derived.
+CRIX treats application-time availability as a machine-checkable model-development invariant rather than documentation alone. Each champion feature has explicit provenance metadata containing source field(s), availability semantics, allowed target and whether it is outcome- or policy-derived.
 
-Training fails closed if a required champion feature lacks provenance metadata or is marked outcome-derived. Timestamped future feature work must also satisfy `availableAt <= asOf`; aggregate validation errors do not print row-level borrower payloads.
-
-The current champion provenance is application-time only:
+Training fails closed if a required champion feature lacks provenance metadata or is marked outcome-/policy-derived. Timestamped research inputs must also satisfy `availableAt <= asOf`; validation errors report aggregate counts rather than raw borrower rows.
 
 | Feature | Source field(s) | Availability |
 |---|---|---|
@@ -71,11 +72,11 @@ The current champion provenance is application-time only:
 
 ## Population conditioning and selection bias
 
-The primary model is trained and evaluated on **historically granted LendingClub loans with observed outcomes**. Its model-development population is therefore explicitly tagged `granted-loans-only`.
+The primary model is trained and evaluated on **historically granted LendingClub loans with observed outcomes**. Its model-development population is explicitly tagged `granted-loans-only`.
 
-CRIX does **not** claim that this identifies `P(default | every applicant)`. Rejected-applicant outcomes are not present in the primary cohort, so CRIX does not fabricate them and does not silently apply parceling, inverse-propensity weighting or other reject-inference methods without a defensible supporting dataset and assumptions.
+CRIX does **not** claim that this identifies `P(default | every applicant)`. Rejected-applicant outcomes are not present in the primary cohort, so CRIX does not fabricate them and does not silently apply reject-inference methods without defensible supporting data and assumptions.
 
-Offline policy backtests are consequently described as **conditional selection analyses over observed granted loans**, not causal claims about historically rejected applicants.
+Offline policy backtests are therefore **conditional selection analyses over observed granted loans**, not causal claims about historically rejected applicants.
 
 ## Temporal training and evaluation
 
@@ -101,173 +102,231 @@ CRIX uses chronological origination cohorts rather than a random split:
 | OOT default rate | 22.42% |
 | Logistic challenger ROC-AUC | 0.6578 |
 
-These results are intentionally not presented as an “accuracy” score. They are model-development diagnostics on one historical lending population.
+These are model-development diagnostics on one historical lending population, not an “accuracy” score.
 
-The training pipeline also produces aggregate governance evidence from cached OOT predictions:
+The governance pipeline also generates:
 
 - deterministic percentile-bootstrap confidence intervals for AUC, KS, Brier and log loss;
 - calibration intercept/slope and calibration bins with observation/event support;
 - calibration-to-OOT PD population stability (PSI);
-- fixed segment diagnostics for bureau-score, DTI, requested-loan-to-income and employment-tenure bands;
-- `insufficient-data` status when a segment lacks enough observations/events for a stable discrimination/calibration estimate.
-
-This evidence is generated during model training rather than inferred by the live API. A read-only pull-request model-validation workflow rebuilds the real-data model and verifies that the governance evidence is present and that the target still states “not a 12-month PD.”
+- fixed segment diagnostics for bureau score, DTI, loan-to-income and employment tenure;
+- `insufficient-data` instead of fabricated metrics for weakly supported segments;
+- observed-cohort policy backtests from cached predictions.
 
 ## Calibration
 
 The monotonic XGBoost champion is trained on the train cohort. A separate Platt/logistic calibration layer is fitted only on 2016 originations, then evaluated on the later 2017 OOT cohort.
 
-The committed artifact contains the calibration parameters and calibration-bin diagnostics. The hardened training pipeline additionally records calibration intercept/slope, bootstrap uncertainty and calibration-to-OOT PD stability in the generated governance evidence.
+The committed artifact contains calibration parameters, support bounds and diagnostics. The deployed champion is not rebound during research validation.
 
-## Challenger
+## Challenger governance
 
-The v3 challenger is no longer a hand-authored demonstration equation. It is a standardized logistic-regression model trained on the same real point-in-time feature contract as the champion and exported with the artifact.
+The runtime challenger is a standardized logistic-regression model trained on the same real point-in-time feature contract as the champion.
 
-Every request surfaces:
+Every live request surfaces `challengerPd`, champion/challenger disagreement and confidence effects.
 
-- `challengerPd`;
-- absolute `disagreement`;
-- confidence reduction when disagreement is material;
-- `MODEL_DISAGREEMENT` when the configured threshold is crossed.
-
-`fico_n` is used as a genuine external bureau-style feature inside both models; it is not treated as a ground-truth label or as a replacement for outcome data.
+v3.1 adds a separate research-governance comparison using the **actual embedded challenger** on the same LendingClub calibration/OOT cohorts. Promotion evidence is deliberately broader than AUC and includes calibration, Brier/log loss, PSI/stability, bootstrap uncertainty and segment diagnostics. A challenger is not promoted merely because one discrimination metric is marginally higher.
 
 ## Out-of-distribution handling
 
 OOD support is derived from the primary training cohort. The artifact stores 1st/99th percentile support for trained features. Inputs outside support are surfaced through `outOfDistribution`, reduce confidence and emit `OUT_OF_DISTRIBUTION`.
 
-This is intentional: schema-valid does not mean model-trustworthy.
-
-Startup readiness additionally checks that each champion feature has finite p01/p99 bounds and a finite reference value inside those bounds.
+Startup readiness checks champion feature bounds/reference values and performs a sentinel score before advertising readiness.
 
 ## External adaptation / benchmark models
 
-CRIX v3 also records product-specific real-data evidence without blending incompatible targets.
+CRIX records product-specific real-data evidence without blending incompatible targets.
 
 ### UCI Default of Credit Card Clients — Taiwan
 
-A separate `CRIX-Behavior-TW 1.0.0` research artifact is trained on four behaviorally defensible derived features:
+A separate research artifact uses behaviorally defensible derived revolving-credit features such as utilization, payment behavior and normalized balance growth. `SEX`, `EDUCATION`, `MARRIAGE` and `AGE` are excluded from the behavioral model.
 
-- six-month mean utilization;
-- six-month on-time-payment rate;
-- number of delayed-payment months in the six-month observation window;
-- six-month bill-balance growth normalized by credit limit.
-
-`SEX`, `EDUCATION`, `MARRIAGE` and `AGE` are excluded.
-
-Missing personal-loan/bureau variables are **not imputed**. Its target is **next-month credit-card default**, so its probability is not blended with CRIX-MonoBoost and does not drive the runtime policy.
+Its target is next-month credit-card default, so its probability is not blended with CRIX-MonoBoost and does not drive the personal-loan runtime policy.
 
 ### German credit benchmarks
 
-Legacy UCI Statlog German Credit and the corrected UCI South German Credit dataset are used only as structural benchmarks on the limited overlapping loan-structure features. UCI documents coding issues in the legacy representation; the corrected South German representation is preferred.
-
-These benchmarks are not evidence that the LendingClub champion transfers unchanged across geographies/products.
+Legacy UCI Statlog German Credit and corrected South German Credit remain structural benchmarks on limited overlapping loan-structure features. They are not evidence that the LendingClub champion transfers unchanged across products/geographies.
 
 ## Explainability
 
-The API returns local model reason codes from counterfactual sensitivity against real training-reference values for trained features. The same bounded perturbation evaluations also support lower-risk model counterfactuals.
+The API returns local model reason codes from bounded counterfactual sensitivity against real training-reference values for trained features. Policy triggers are returned separately as `policyReasons`.
 
-Each returned counterfactual:
+Counterfactuals are model-analysis aids, not promises of approval and not legally sufficient adverse-action reasons.
 
-- changes only one champion feature;
-- uses the real training-reference value bounded by the committed p01/p99 support;
-- is included only when the exact deployed champion produces a lower PD;
-- returns before/after PD and training-support bounds;
-- does not mutate the submitted application.
+## Live expected loss
 
-Policy triggers are returned separately as `policyReasons`. A decline caused by a deterministic policy threshold is therefore not misrepresented as a champion-model explanation.
-
-These explanations/counterfactuals are useful for model-analysis demonstration; they are **not represented as legally sufficient adverse-action reasons**, and a lower-PD counterfactual is not a promise of approval.
-
-## Expected loss
-
-CRIX derives:
+The public runtime continues to derive:
 
 `Expected Loss = PD × LGD × EAD`
 
-LGD remains a deterministic engineering approximation based on leverage, income stability and liquidity buffer. EAD is the requested loan amount. Neither is institutionally validated in this repository.
+where runtime LGD is a deterministic engineering approximation and runtime EAD is the requested loan amount. These live components remain intentionally separate from the newer offline empirical LGD/EAD research artifacts.
 
-Because the primary PD target is final-resolution risk, expected-loss outputs must be interpreted within the same horizon limitation.
+Because the live primary PD target is final-resolution risk, live expected-loss outputs inherit that horizon limitation.
+
+## v3.1 offline lifetime-risk stack
+
+### Historical as-of / time machine
+
+Research snapshots enforce point-in-time availability and deterministic snapshot identity. Historical evaluation cannot use features, preprocessing information, macro values or outcomes that were unavailable at the declared as-of date.
+
+### Lifetime PD
+
+A censoring-aware research model produces marginal/cumulative default term structures at 3, 6, 12, 24 and 36 months. These probabilities have their own explicit horizon semantics and do **not** replace `/api/v3` `pd`.
+
+### Delinquency transitions
+
+A separate migration research layer models delinquency-state transitions with cures/backward movement where observed instead of forcing one-way deterioration.
+
+### Empirical LGD
+
+Offline LGD research uses recovery severity/timing evidence and preserves economically meaningful conventions, including the possibility that collection costs can push economic LGD above 100% where explicitly defined. It does not silently clamp away such cases.
+
+### Empirical EAD / CCF
+
+Offline instalment EAD research is separated from revolving-credit / CCF research. Product structure and target definitions are not blended merely for convenience.
+
+## Correlated portfolio loss research
+
+`model/portfolio_risk.py` implements an offline one-factor latent-default Monte Carlo engine.
+
+Methodological invariants include:
+
+- supplied marginal PDs remain the marginals of the simulation;
+- valid/bounded correlation inputs;
+- deterministic fixed-seed replay;
+- deterministic results across simulation chunk sizes;
+- bounded-memory chunking rather than materializing a full scenario × obligor matrix;
+- explicit withholding of 99.9% tail output when scenario precision is inadequate;
+- expected-shortfall/tail contribution reconciliation where additivity is required.
+
+Heavy simulation is deliberately excluded from Fastify request handling to avoid CPU-denial-of-service risk.
+
+## Macro-conditioned stress research
+
+The live `/api/v3/risk/stress` endpoint remains **deterministic borrower sensitivity** (`CRIX-Sensitivity 1.0`).
+
+v3.1 adds a separate offline macro research layer with point-in-time macro joins and an empirical unemployment/default relationship demonstration. The U.S. unemployment series used by the public research run is frozen in the repository with provenance so validation is not dependent on a live FRED request.
+
+This is research evidence, not an institutionally validated macroeconometric stress model.
+
+## IFRS 9-style ECL research
+
+`model/ifrs9.py` implements research semantics for:
+
+- Stage 1 / Stage 2 / Stage 3;
+- SICR and days-past-due backstops;
+- default and cure/probation handling;
+- marginal PD conversion;
+- scenario-weighted ECL;
+- effective-interest-rate-style discounting.
+
+The module is explicitly labelled **IFRS 9-style research**. Exact accounting policy, legal interpretation, data lineage and independent validation remain production prerequisites.
+
+## Basel-style / economic-capital research
+
+`model/capital.py` keeps expected loss separate from unexpected/tail capital and provides IRB-inspired/economic-capital research calculations plus tail-capital contribution reconciliation.
+
+These outputs are not represented as Basel regulatory compliance for any institution or jurisdiction.
+
+## Portfolio decision optimisation
+
+`model/decisioning.py` supports bounded research optimisation under explicit constraints such as budget/expected-loss limits.
+
+The optimiser:
+
+- never silently relaxes constraints;
+- reports infeasibility explicitly;
+- uses direct/simple methods where the problem structure allows them;
+- treats general binary constrained allocation as combinatorial rather than pretending it is always `O(n log n)`;
+- is verified against exact exhaustive solutions on toy portfolios.
 
 ## Decision policy
 
-The model does not directly approve or decline applications. `CRIX-Policy 3.0` is a separate deterministic layer with explicit PD, DTI, FICO/credit-score, delinquency, loan-to-income and confidence thresholds.
+The live statistical model does not directly approve or decline applications. `CRIX-Policy 3.0` is a separate deterministic layer with explicit PD, DTI, credit-score, delinquency, loan-to-income and confidence thresholds.
 
-The policy is deliberately versioned independently from the model. Runtime responses now surface the exact policy threshold reasons separately from local model reasons.
-
-## Observed-cohort policy backtesting
-
-The offline governance layer evaluates simple, reproducible PD-threshold policies on cached OOT predictions. It records selection rate, observed default rate, selected exposure, predicted default exposure and observed default exposure for the **same granted-loan OOT population**.
-
-An approve-all backtest must reconcile to the full observed OOT default rate. Threshold inclusion is deterministic (`PD <= threshold`). Outcomes for applications outside the observed historically granted cohort are explicitly unsupported rather than inferred.
-
-These backtests are model-risk evidence, not proof that a CRIX policy would have produced identical outcomes for LendingClub applicants who were historically rejected.
+Model retraining and risk-appetite changes can therefore be governed independently.
 
 ## Borrower sensitivity testing
 
-The `/api/v3/risk/stress` endpoint is retained for compatibility, but its semantics are now explicit:
+The `/api/v3/risk/stress` endpoint applies fixed borrower-level mild/severe shocks and reruns the ordinary live model/policy lifecycle.
 
-- method: `deterministic-borrower-sensitivity`;
-- scenario version: `CRIX-Sensitivity 1.0`;
-- severities: `mild`, `severe`.
-
-The endpoint applies fixed borrower-level shocks, then reruns the complete model and policy lifecycle. Severe shocks are at least as adverse as mild shocks on every shocked input by construction.
-
-This is **not** an empirically estimated macroeconomic stress model. Only shocks affecting trained primary-model features (directly or via a trained derived feature such as loan-to-income) can directly move champion PD. Other shocked contextual fields can still alter LGD, policy or flags.
-
-A future macro stress engine must use its own versioned statistical model and scenario semantics rather than silently reinterpreting this endpoint.
+It is **not** the v3.1 macro research engine. Context fields absent from the champion cannot directly alter champion PD unless they change a trained derived feature.
 
 ## Runtime efficiency and bounded work
 
-The live service constructs one immutable scoring context per base application: validated numeric input, derived loan-to-income, feature map and champion vector. Champion, challenger, OOD, LGD/policy and base decision logic reuse that context.
+The live service constructs one immutable scoring context per base application: validated numeric input, loan-to-income, feature map and champion vector. Champion, challenger, OOD, runtime loss logic and policy reuse that context.
 
-The only intentional repeated champion scoring is the bounded explanation pass across the small champion feature set. A single perturbation result per feature is reused for reason codes and counterfactuals. Tree traversal remains hard-capped, synchronous batch size remains limited to 50, request/body/time limits remain enabled, and no CPU-heavy background simulation has been introduced into Fastify.
+Intentional repeated champion scoring is bounded to the small explanation feature set. Tree traversal is capped, batch size remains limited to 50, and no portfolio Monte Carlo/optimisation workload is exposed on the Fastify event loop.
+
+## Security / privacy boundary
+
+The public demo must not receive real consumer-credit data or raw private portfolios.
+
+Research reports/artifacts are aggregate or public-source evidence. Runtime protections include strict request schemas, request/body/time bounds, endpoint rate limits, CORS allow-listing, Helmet, optional constant-time API-key authentication, log redaction, sanitized errors, finite-number guards and model-artifact integrity checks.
+
+A regulated deployment would require stronger IAM, tenant isolation, immutable audit retention and formal data-governance controls.
 
 ## Known limitations
 
 1. The primary outcome population is historical LendingClub US p2p lending, not an institution-specific production portfolio.
 2. `dti_n` is narrower than a universal bureau DTI definition; its source semantics must not be generalized silently.
 3. Employment tenure is banded/normalized.
-4. The champion lacks several bureau-style features that CRIX accepts at its policy/context layer.
+4. The champion lacks several bureau-style features accepted by the API policy/context layer.
 5. Final-resolution default risk is not a fixed-horizon 12-month PD.
-6. The dataset includes only granted loans, creating the accepted-applicant / underwriting-selection limitation; reject inference is not supported by the current primary source.
+6. The primary source contains granted loans only; reject inference is unsupported.
 7. Historical performance does not guarantee present-day calibration or geographic transfer.
-8. No fairness conclusion can be made without the appropriate protected-attribute evaluation data and governance process.
-9. LGD/EAD/pricing are engineering approximations rather than validated institution models.
-10. External UCI models have different products and target horizons and are intentionally kept separate.
-11. Current `mild`/`severe` scenarios are deterministic borrower sensitivities, not empirical macro stress scenarios.
-12. Runtime counterfactuals are bounded model-analysis aids, not legally sufficient adverse-action explanations or guaranteed decision changes.
+8. No fairness conclusion can be made without appropriate protected-attribute evaluation data and governance.
+9. Live LGD/EAD remain engineering baselines even though separate empirical research artifacts now exist.
+10. External UCI models have different products/targets and remain separate.
+11. Runtime mild/severe scenarios are deterministic borrower sensitivities, not the empirical macro research engine.
+12. Counterfactuals are not legally sufficient adverse-action explanations.
+13. IFRS 9-style and Basel-style modules are research implementations, not compliance approvals.
+14. Public macro evidence is intentionally parsimonious and must not be generalized as a full institutional macroeconometric model.
+15. Portfolio simulation/optimisation results are research outputs whose assumptions, correlations, scenario counts and constraints must be governed explicitly.
 
 ## Production gates
 
-Before any real credit use, at minimum:
+Before real credit/accounting/capital use, at minimum:
 
 1. train/recalibrate on representative institution-specific historical performance data with point-in-time feature correctness;
-2. define target/default definitions and observation/performance windows contractually;
-3. independently validate discrimination, calibration, uncertainty, stability and reason-code behavior;
+2. define default/target/observation/performance windows contractually;
+3. independently validate discrimination, calibration, uncertainty, stability, reason-code behavior and challenger promotion;
 4. test fairness, prohibited variables and proxy risk with legal/compliance review;
 5. validate selection bias and reject-inference assumptions where relevant;
-6. establish model registry, approvals, signed/versioned artifacts and controlled promotion;
-7. monitor drift, calibration, overrides, decision rates, complaints and performance;
-8. validate LGD/EAD separately;
-9. govern policy and pricing independently from model development;
-10. implement auditable adverse-action processes appropriate to applicable law;
-11. add production-grade authentication, authorization, audit retention and operational controls;
-12. prohibit real consumer data from the public demo environment.
+6. establish approved/signed model registry and promotion workflows;
+7. validate lifetime PD, migration, LGD, EAD, CCF and macro models separately;
+8. govern IFRS 9 staging/SICR/scenario/EIR policies through accounting approval;
+9. implement jurisdiction-appropriate Basel/regulatory-capital rules if regulatory outputs are required;
+10. govern policy/pricing/adverse-action processes independently from model development;
+11. monitor drift, calibration, overrides, decision rates, portfolio concentration and realized losses;
+12. add production IAM, authorization, audit retention and operational controls;
+13. prohibit real consumer data from the public demo environment.
 
 ## Reproducibility
 
-Primary training evidence is committed/generated in:
+Primary training/governance evidence:
 
 - `model/artifacts/crix-monoboost-v2.json`
 - `model/TRAINING_REPORT.md`
 - `model/governance.py`
-- `model/test_governance.py`
 
-External research evidence is committed in:
+Lifetime-risk research:
 
-- `model/artifacts/crix-behavior-tw-v1.json`
-- `model/artifacts/external-benchmarks.json`
-- `model/EXTERNAL_BENCHMARKS.md`
+- `model/RISK_STACK_REPORT.md`
+- `model/survival.py`
+- `model/transitions.py`
+- `model/lgd.py`
+- `model/ead.py`
+- `model/time_machine.py`
 
-The GitHub Actions training workflow can reproduce the primary artifacts from public sources. Pull requests that touch model code also run a read-only full model build that verifies provenance, population conditioning, uncertainty metadata, policy-backtest reconciliation and target-horizon semantics before merge.
+Advanced v3.1 research:
+
+- `model/portfolio_risk.py`
+- `model/macro_stress.py`
+- `model/ifrs9.py`
+- `model/capital.py`
+- `model/decisioning.py`
+- `model/challenger_governance.py`
+- `model/train_advanced_risk.py`
+
+GitHub Actions runs the complete model/governance suite and full research validation before merge. The v3.1 roadmap merge was gated by **57 passing Python tests**, successful live-runtime CI, champion retrain validation, isolated historical risk-stack reproduction and integrated advanced-risk evidence generation.
