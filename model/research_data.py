@@ -118,7 +118,12 @@ def _term_months(value: object) -> float:
 
 
 def _parse_dates(series: pd.Series) -> pd.Series:
-    return pd.to_datetime(series, errors="coerce", format="mixed")
+    text = series.astype("string").str.strip()
+    parsed = pd.to_datetime(text, errors="coerce", format="%b-%y")
+    fallback = parsed.isna() & text.notna()
+    if fallback.any():
+        parsed.loc[fallback] = pd.to_datetime(text.loc[fallback], errors="coerce", format="mixed")
+    return parsed
 
 
 def _months_between(start: pd.Series, end: pd.Series) -> np.ndarray:
