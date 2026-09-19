@@ -49,6 +49,17 @@ def _validate_relative_text(value: object, field: str) -> str:
     return value
 
 
+def _resolve_under_root(root: Path, relative: object, field: str) -> Path:
+    text = _validate_relative_text(relative, field)
+    resolved_root = root.resolve()
+    candidate = (resolved_root / text).resolve()
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError as exc:
+        raise LineageViolation(f"{field} resolves outside the repository root") from exc
+    return candidate
+
+
 def _validate_sha256(value: object, field: str) -> str:
     if not isinstance(value, str) or not _HEX64.fullmatch(value):
         raise LineageViolation(f"{field} must be a lowercase SHA-256 digest")
@@ -123,10 +134,14 @@ def build_training_manifest(
         "runId": str(run_id),
         "createdAt": created_at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "gitCommit": git_commit,
+        "gitCommitScope": "approved-artifact-origin-code-revision",
         "pythonVersion": platform.python_version(),
+        "pythonVersionScope": "v3.2-lineage-validation-environment",
         "dependencyLock": {
             "path": _relative_path(root, dependency_lock_path),
             "sha256": sha256_file(dependency_lock_path),
+            "scope": "v3.2-lineage-validation-environment",
+            "kind": "declared-requirements-specification",
         },
         "dataset": {
             "sourceId": source.get("id"),
@@ -155,9 +170,11 @@ def build_training_manifest(
             "artifactSha256": runtime_manifest.get("artifactSha256"),
             "trainingRunId": runtime_manifest.get("trainingRunId"),
             "trainingGitCommit": runtime_manifest.get("gitCommit"),
+            "trainingEnvironmentHash": runtime_manifest.get("environmentHash"),
         },
         "reproducibilityClass": (
-            "tamper-evident lineage for committed inputs/evidence; deterministic seeds and hashes "
+            "tamper-evident retrospective lineage for the approved artifact plus v3.2 validation evidence; "
+            "the original manifest environment hash is preserved separately, and deterministic seeds/hashes "
             "do not guarantee bitwise retraining across numerical-library/platform changes"
         ),
         "privacy": "aggregate counts, versions and hashes only; no borrower rows, IDs, secrets or absolute paths",
@@ -174,7 +191,9 @@ def validate_manifest_schema(manifest: Mapping[str, Any]) -> None:
         "runId",
         "createdAt",
         "gitCommit",
+        "gitCommitScope",
         "pythonVersion",
+        "pythonVersionScope",
         "dependencyLock",
         "dataset",
         "split",
@@ -194,6 +213,10 @@ def validate_manifest_schema(manifest: Mapping[str, Any]) -> None:
     if manifest.get("schemaVersion") != LINEAGE_SCHEMA_VERSION:
         raise LineageViolation("unsupported lineage schema version")
     _validate_git_commit(manifest.get("gitCommit"))
+    if manifest.get("gitCommitScope") != "approved-artifact-origin-code-revision":
+        raise LineageViolation("unsupported gitCommitScope")
+    if manifest.get("pythonVersionScope") != "v3.2-lineage-validation-environment":
+        raise LineageViolation("unsupported pythonVersionScope")
 
     lock = manifest.get("dependencyLock")
     artifact = manifest.get("artifact")
@@ -202,6 +225,10 @@ def validate_manifest_schema(manifest: Mapping[str, Any]) -> None:
         raise LineageViolation("lineage dependencyLock, artifact and dataset must be objects")
     _validate_relative_text(lock.get("path"), "dependencyLock.path")
     _validate_sha256(lock.get("sha256"), "dependencyLock.sha256")
+    if lock.get("scope") != "v3.2-lineage-validation-environment":
+        raise LineageViolation("unsupported dependencyLock.scope")
+    if lock.get("kind") != "declared-requirements-specification":
+        raise LineageViolation("unsupported dependencyLock.kind")
     _validate_relative_text(artifact.get("path"), "artifact.path")
     _validate_sha256(artifact.get("sha256"), "artifact.sha256")
     _validate_sha256(dataset.get("sourceSha256"), "dataset.sourceSha256")
@@ -239,7 +266,7 @@ def _verify_previous_manifest_chain(
         previous = current["previousManifest"]
         if not isinstance(previous, dict):
             raise LineageViolation("previousManifest must be null or an object")
-        previous_path = (root / _validate_relative_text(previous.get("path"), "previousManifest.path")).resolve()
+        previous_path = _resolve_under_root(root, previous.get("path"), "previousManifest.path")
         if previous_path in seen:
             raise LineageViolation("lineage manifest chain contains a cycle")
         seen.add(previous_path)
@@ -282,17 +309,17 @@ def verify_training_manifest(
         raise LineageViolation("lineage dataContractVersion does not match the expected contract")
 
     lock = manifest["dependencyLock"]
-    dependency_path = root / str(lock["path"])
+    dependency_path = _resolve_under_root(root, lock["path"], "dependencyLock.path")
     if not dependency_path.is_file() or sha256_file(dependency_path) != lock["sha256"]:
         raise LineageViolation("dependency lock hash verification failed")
 
     artifact = manifest["artifact"]
-    artifact_path = root / str(artifact["path"])
+    artifact_path = _resolve_under_root(root, artifact["path"], "artifact.path")
     if not artifact_path.is_file() or sha256_file(artifact_path) != artifact["sha256"]:
         raise LineageViolation("artifact hash verification failed")
 
     for entry in manifest["evidence"]:
-        evidence_path = root / str(entry["path"])
+        evidence_path = _resolve_under_root(root, entry["path"], "evidence.path")
         if not evidence_path.is_file() or sha256_file(evidence_path) != entry["sha256"]:
             raise LineageViolation(f"evidence hash verification failed for {entry['path']}")
 
