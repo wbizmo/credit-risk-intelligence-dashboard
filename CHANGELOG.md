@@ -2,6 +2,52 @@
 
 All notable CRIX releases are documented here.
 
+## 3.2.0 — 2026-09-19
+
+### Runtime performance and bounded work
+
+- Precompiled the champion execution plan and removed invariant JSON/object work from request-time scoring.
+- Indexed champion trees by feature so explanation counterfactuals revisit only affected trees; deployed explanation work fell from 384 to 317 tree visits (17.45%).
+- Recorded ~536,854 compiled champion ops/s and 0.003746 ms p50 champion latency on the Batch A CI host; full compiled assessment p50 was 0.018628 ms versus 0.025889 ms for the reference path.
+- Added deterministic operation-count complexity gates, latency percentiles, memory evidence and real Fastify loopback load profiles.
+- Final repo audit collapsed batch response accounting to one pass and removed avoidable per-subset O(n) reconstruction from the bounded exact portfolio optimiser using Gray-code incremental state.
+
+### Portfolio dependency and tail-risk research
+
+- Added Student-t dependence and bounded low-rank multi-factor dependence alongside the canonical one-factor Gaussian simulator.
+- Added single-replay tail attribution and research-only POT/GPD EVT tail extrapolation with explicit unstable/insufficient states and finite-mean expected-shortfall rules.
+- Final indexed-bucket tail replay measured ~0.80x reference speed at one quantile, ~2.42x speedup at three quantiles and ~4.03x at five quantiles, demonstrating the intended Q-scaling crossover rather than claiming a universal win.
+- Final audit removed the hidden per-quantile mask scan and moved invariant backend thresholds/loadings outside the simulation chunk loop.
+- Added an optional lazy CuPy backend while retaining NumPy as the canonical deterministic path. No GPU speedup/crossover claim is made in v3.2.0 because connected release infrastructure has no CUDA device.
+
+### Model governance, explanation validation and lineage
+
+- Added adversarial validation plus PSI, Jensen-Shannon, Wasserstein, support-breach, missingness and quantile-movement evidence.
+- Historical governed shift evidence produced adversarial AUC 0.5593 with aggregate and all four champion-feature statuses passing the configured review bands.
+- Added deterministic offline SHAP-vs-local-sensitivity validation. On n=512 OOT observations, mean top-3 overlap was 97.59%, sign agreement 95.33% and bounded-perturbation stability 96.94%.
+- Added versioned source/harmonized/split/external dataframe contracts, immutable source checksum gating and aggregate-only failure evidence.
+- Added committed tamper-evident training lineage with artifact/data/evidence/dependency hashes and read-only CI verification.
+
+### Runtime security and observability
+
+- Added explicit `public-demo` and fail-closed `required` auth modes, bounded current+next key rotation, constant-time digest comparison and explicit reverse-proxy trust.
+- Added key-aware plus supplementary-IP quotas without placing credentials/hashes in labels.
+- Added optional privacy-bounded OpenTelemetry metrics for HTTP/risk/runtime/readiness signals with no borrower IDs, raw feature values or exact PD labels.
+- In-memory telemetry benchmark measured ~5.3% mean overhead and ~1.0% p95 overhead in the recorded Batch D loopback run.
+
+### Reproducible dependencies and supply-chain evidence
+
+- Added committed npm and hash-pinned Python research locks plus lock-provenance metadata and deliberate CI lock-drift failure tests.
+- Removed an unused optbinning/ortools/protobuf research chain that carried advisories and moved Swagger UI to the patched dependency line.
+- Batch D certification reported 0 known Node production vulnerabilities and 0 known vulnerabilities in the governed Python research lock.
+
+### Compatibility
+
+- Package release is 3.2.0 while the API contract remains 3.0.0 under `/api/v3`.
+- OpenAPI/discovery/health/readiness and scored response envelopes now expose package `releaseVersion` separately from API `apiVersion`.
+- CRIX-MonoBoost 2.0.0, CRIX-Policy 3.0, final-loan-resolution PD semantics and existing policy thresholds remain unchanged.
+- Heavy Python/Monte Carlo/EVT/optimisation work remains outside the Fastify request path.
+
 ## 3.1.0 — 2026-09-12
 
 ### Model governance and point-in-time research

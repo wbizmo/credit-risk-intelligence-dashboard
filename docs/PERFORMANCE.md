@@ -2,6 +2,28 @@
 
 CRIX performance measurements are engineering evidence, not an internet or cloud-provider SLA.
 
+## Recorded v3.2 evidence
+
+Batch A runtime evidence was captured on Node.js **22.23.2** on an **AMD EPYC 7763** CI host:
+
+| Operation | Evidence |
+|---|---:|
+| Compiled champion throughput | **~536,854 ops/s** |
+| Typed-array comparison | **~376,925 ops/s** |
+| Compiled champion p50 | **0.003746 ms** |
+| Reference champion p50 | **0.004456 ms** |
+| Full compiled assessment p50 | **0.018628 ms** |
+| Full reference assessment p50 | **0.025889 ms** |
+| Sparse explanation tree visits | **317** vs **384** full-rescore (**17.45% fewer**) |
+
+Recorded HTTP evidence:
+
+- production-rate-limit profile: **80** requests → **60 HTTP 200 + 20 HTTP 429**, **0** 5xx, **0** timeouts;
+- authenticated profile: **40/40 HTTP 200**;
+- sustained score profile: **500/500 HTTP 200**, **0** failures.
+
+Batch D's in-memory telemetry comparison measured **5.976 ms** mean / **10.750 ms** p95 with telemetry disabled and **6.295 ms** mean / **10.858 ms** p95 enabled: approximately **+5.3% mean** and **+1.0% p95**. This isolates metric instrumentation/export-to-memory overhead; it is not an external OTLP collector SLO.
+
 ## Runtime benchmark
 
 Run on Node.js 22:

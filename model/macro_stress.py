@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import date
 import math
@@ -22,19 +23,20 @@ class MacroObservation:
 
 
 def asof_join_macro(as_of_dates: Iterable[str], observations: Iterable[MacroObservation]) -> np.ndarray:
-    """Backward as-of join by publication availability, never reference date alone."""
+    """Backward as-of join by publication availability, never reference date alone.
+
+    Observations are sorted once. Each lookup uses binary search over parsed
+    publication dates, avoiding a full observation scan for every as-of date.
+    """
     obs = sorted(observations, key=lambda item: (item.published_at, item.reference_date))
     if not obs:
         raise ValueError("at least one macro observation is required")
+    published = [date.fromisoformat(item.published_at) for item in obs]
     result: list[float] = []
     for raw in as_of_dates:
         as_of = date.fromisoformat(raw)
-        eligible = [item for item in obs if date.fromisoformat(item.published_at) <= as_of]
-        if not eligible:
-            result.append(float("nan"))
-            continue
-        latest = max(eligible, key=lambda item: (item.published_at, item.reference_date))
-        result.append(float(latest.value))
+        index = bisect_right(published, as_of) - 1
+        result.append(float(obs[index].value) if index >= 0 else float("nan"))
     return np.asarray(result, dtype=float)
 
 
@@ -87,8 +89,17 @@ def fit_univariate_logit(x: Iterable[float], y: Iterable[int], *, max_iter: int 
     p = np.clip(_sigmoid(design @ beta), 1e-9, 1.0 - 1e-9)
     w = p * (1.0 - p)
     information = design.T @ (w[:, None] * design)
-    covariance = np.linalg.inv(information)
-    standard_error = math.sqrt(float(covariance[1, 1]))
+    try:
+        coefficient_covariance_column = np.linalg.solve(
+            information,
+            np.array([0.0, 1.0], dtype=float),
+        )
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("macro logit information matrix is singular") from exc
+    coefficient_variance = float(coefficient_covariance_column[1])
+    if not math.isfinite(coefficient_variance) or coefficient_variance <= 0.0:
+        raise ValueError("macro logit coefficient variance is invalid")
+    standard_error = math.sqrt(coefficient_variance)
     coefficient = float(beta[1])
     return {
         "method": "univariate-logistic-macro-overlay",

@@ -48,6 +48,22 @@ The primary outcome cohort contains historically granted loans with observed out
 
 Calibration-to-OOT PD population stability index: **0.0265**.
 
+## v3.2 governance validation
+
+The v3.2 governance layer is additive to the unchanged CRIX-MonoBoost 2.0.0 champion:
+
+- adversarial validation AUC between the chronological training cohort and later calibration+OOT population: **0.5593**;
+- aggregate distribution-shift status: **pass**;
+- all four champion features passed the configured feature-level review bands;
+- offline explanation-fidelity validation used a fixed-seed **n=512** OOT sample;
+- mean top-3 SHAP/local-sensitivity overlap: **97.59%**;
+- top-3 disagreement rate: **7.23%**;
+- mean absolute-rank correlation: **0.9141**;
+- mean sign agreement: **95.33%**;
+- mean bounded-perturbation top-3 stability: **96.94%**.
+
+These diagnostics do not auto-retrain, auto-promote or create legal adverse-action explanations.
+
 ## Point-in-time feature provenance
 
 The champion contract fails closed if a trained feature lacks provenance metadata or is marked outcome-derived.

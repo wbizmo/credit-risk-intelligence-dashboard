@@ -29,6 +29,14 @@ class ArrayBackend:
 
 
 @dataclass(frozen=True)
+class PreparedDependency:
+    spec: "DependencySpec"
+    thresholds: Any
+    factor_loadings: Any | None
+    residual_scale: Any | None
+
+
+@dataclass(frozen=True)
 class DependencySpec:
     name: str
     version: str
@@ -280,17 +288,39 @@ def _dependency_thresholds(pd_v: np.ndarray, spec: DependencySpec) -> np.ndarray
     return _norm_ppf(pd_v)
 
 
+def _prepare_dependency_backend(
+    spec: DependencySpec,
+    thresholds: np.ndarray,
+    backend: ArrayBackend,
+) -> PreparedDependency:
+    xp = backend.xp
+    return PreparedDependency(
+        spec=spec,
+        thresholds=xp.asarray(thresholds, dtype=xp.float64),
+        factor_loadings=(
+            xp.asarray(spec.factor_loadings, dtype=xp.float64)
+            if spec.loading_kind == "explicit-low-rank"
+            else None
+        ),
+        residual_scale=(
+            xp.asarray(spec.residual_scale, dtype=xp.float64)
+            if spec.loading_kind == "explicit-low-rank"
+            else None
+        ),
+    )
+
+
 def _defaults_chunk(
     *,
     start: int,
     stop: int,
     obligor_count: int,
     seed: int,
-    thresholds: np.ndarray,
-    spec: DependencySpec,
+    prepared: PreparedDependency,
     backend: ArrayBackend,
 ) -> Any:
     xp = backend.xp
+    spec = prepared.spec
     scenario_index = xp.arange(start, stop, dtype=xp.uint64)
     idio_counters = scenario_index[:, None] * xp.uint64(obligor_count) + xp.arange(obligor_count, dtype=xp.uint64)[None, :]
     idiosyncratic = _norm_ppf_backend(
@@ -312,9 +342,12 @@ def _defaults_chunk(
             _uniform_from_counter_backend(factor_counters, seed ^ 0xA5A5A5A5, xp),
             backend,
         )
-        loadings = xp.asarray(spec.factor_loadings, dtype=xp.float64)
-        residual = xp.asarray(spec.residual_scale, dtype=xp.float64)
-        gaussian = systematic @ loadings.T + idiosyncratic * residual[None, :]
+        assert prepared.factor_loadings is not None
+        assert prepared.residual_scale is not None
+        gaussian = (
+            systematic @ prepared.factor_loadings.T
+            + idiosyncratic * prepared.residual_scale[None, :]
+        )
 
     if spec.name == "student-t":
         assert spec.degrees_of_freedom is not None
@@ -326,8 +359,7 @@ def _defaults_chunk(
     else:
         latent = gaussian
 
-    threshold_values = xp.asarray(thresholds, dtype=xp.float64)
-    return latent < threshold_values[None, :]
+    return latent < prepared.thresholds[None, :]
 
 
 def _simulate_loss_vector(
@@ -339,8 +371,10 @@ def _simulate_loss_vector(
     chunk_size: int,
     seed: int,
     backend: ArrayBackend,
+    prepared: PreparedDependency | None = None,
 ) -> np.ndarray:
     losses = np.empty(scenarios, dtype=np.float64)
+    prepared = prepared or _prepare_dependency_backend(spec, thresholds, backend)
     loss_backend = backend.xp.asarray(loss_given_default, dtype=backend.xp.float64)
     n = loss_given_default.size
     for start in range(0, scenarios, chunk_size):
@@ -350,8 +384,7 @@ def _simulate_loss_vector(
             stop=stop,
             obligor_count=n,
             seed=seed,
-            thresholds=thresholds,
-            spec=spec,
+            prepared=prepared,
             backend=backend,
         )
         chunk_losses = _scenario_losses(defaults, loss_backend, backend)
@@ -370,12 +403,13 @@ def _tail_contributions_shared_pass(
     chunk_size: int,
     seed: int,
     backend: ArrayBackend,
+    prepared: PreparedDependency | None = None,
 ) -> dict[str, list[float]]:
     """Replay every scenario once and aggregate disjoint loss buckets.
 
-    Tail sets are nested by threshold. Each scenario's obligor-loss vector is
-    summed into exactly one bucket, then bucket totals are accumulated from the
-    most severe bucket down. This avoids Q complete S x N replays.
+    Each scenario contributes its obligor-loss row to exactly one threshold
+    bucket via backend-native indexed accumulation. Cumulative bucket totals
+    then recover every nested tail set without a Q-per-chunk mask scan.
     """
     if not quantile_values:
         return {}
@@ -384,8 +418,10 @@ def _tail_contributions_shared_pass(
     n = loss_given_default.size
     ordered = sorted(quantile_values.items(), key=lambda item: (item[1], item[0]))
     ordered_thresholds = np.asarray([threshold for _, threshold in ordered], dtype=np.float64)
-    bucket_totals = np.zeros((len(ordered) + 1, n), dtype=np.float64)
+    bucket_totals_backend = xp.zeros((len(ordered) + 1, n), dtype=xp.float64)
+    bucket_counts = np.zeros(len(ordered) + 1, dtype=np.int64)
     loss_backend = xp.asarray(loss_given_default, dtype=xp.float64)
+    prepared = prepared or _prepare_dependency_backend(spec, thresholds, backend)
 
     for start in range(0, scenarios, chunk_size):
         stop = min(scenarios, start + chunk_size)
@@ -394,38 +430,36 @@ def _tail_contributions_shared_pass(
             stop=stop,
             obligor_count=n,
             seed=seed,
-            thresholds=thresholds,
-            spec=spec,
+            prepared=prepared,
             backend=backend,
         )
         weighted = defaults.astype(xp.float64) * loss_backend[None, :]
         bucket_index = np.searchsorted(ordered_thresholds, losses[start:stop], side="right")
+        bucket_counts += np.bincount(bucket_index, minlength=len(ordered) + 1)
+        xp.add.at(
+            bucket_totals_backend,
+            xp.asarray(bucket_index, dtype=xp.int64),
+            weighted,
+        )
 
-        for bucket in range(1, len(ordered) + 1):
-            local_mask = bucket_index == bucket
-            if not np.any(local_mask):
-                continue
-            backend_mask = xp.asarray(local_mask)
-            subtotal = xp.sum(weighted[backend_mask], axis=0, dtype=xp.float64)
-            bucket_totals[bucket] += backend.to_numpy(subtotal).astype(np.float64, copy=False)
-
-    tail_counts = {
-        q: int(np.sum(losses >= threshold))
-        for q, threshold in quantile_values.items()
-    }
+    bucket_totals = backend.to_numpy(bucket_totals_backend).astype(np.float64, copy=False)
     totals_by_quantile: dict[float, np.ndarray] = {}
-    running = np.zeros(n, dtype=np.float64)
+    counts_by_quantile: dict[float, int] = {}
+    running_totals = np.zeros(n, dtype=np.float64)
+    running_count = 0
     for ordered_index in range(len(ordered) - 1, -1, -1):
-        running = running + bucket_totals[ordered_index + 1]
+        bucket = ordered_index + 1
+        running_totals += bucket_totals[bucket]
+        running_count += int(bucket_counts[bucket])
         q = ordered[ordered_index][0]
-        totals_by_quantile[q] = running.copy()
+        totals_by_quantile[q] = running_totals.copy()
+        counts_by_quantile[q] = running_count
 
     return {
-        str(q): (totals_by_quantile[q] / tail_counts[q]).tolist()
+        str(q): (totals_by_quantile[q] / counts_by_quantile[q]).tolist()
         for q in quantile_values
-        if tail_counts[q] > 0
+        if counts_by_quantile[q] > 0
     }
-
 
 def _tail_contributions_reference(
     *,
@@ -441,6 +475,7 @@ def _tail_contributions_reference(
     """Pre-v3.2 replay algorithm retained only for equivalence benchmarks/tests."""
     n = loss_given_default.size
     backend = _resolve_backend("numpy")
+    prepared = _prepare_dependency_backend(spec, thresholds, backend)
     contributions: dict[str, list[float]] = {}
     for q, threshold in quantile_values.items():
         mask = losses >= threshold
@@ -458,8 +493,7 @@ def _tail_contributions_reference(
                 stop=stop,
                 obligor_count=n,
                 seed=seed,
-                thresholds=thresholds,
-                spec=spec,
+                prepared=prepared,
                 backend=backend,
             )
             totals += np.sum(
@@ -513,6 +547,7 @@ def simulate_portfolio(
     backend_impl = _resolve_backend(backend)
     spec = _resolve_dependency(n, rho, dependency_model)
     thresholds = _dependency_thresholds(pd_v, spec)
+    prepared = _prepare_dependency_backend(spec, thresholds, backend_impl)
     loss_given_default = lgd_v * ead_v
     losses = _simulate_loss_vector(
         loss_given_default=loss_given_default,
@@ -522,6 +557,7 @@ def simulate_portfolio(
         chunk_size=chunk_size,
         seed=seed,
         backend=backend_impl,
+        prepared=prepared,
     )
 
     expected = float(np.mean(losses))
@@ -561,6 +597,7 @@ def simulate_portfolio(
             chunk_size=chunk_size,
             seed=seed,
             backend=backend_impl,
+            prepared=prepared,
         )
         if tail_contributions
         else {}

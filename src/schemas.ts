@@ -116,11 +116,12 @@ export const errorSchema = {
 export const healthResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "service", "version", "uptimeSeconds", "timestamp"],
+  required: ["status", "service", "version", "releaseVersion", "uptimeSeconds", "timestamp"],
   properties: {
     status: { type: "string", enum: ["ok"] },
     service: { type: "string" },
     version: { type: "string" },
+    releaseVersion: { type: "string" },
     uptimeSeconds: { type: "integer", minimum: 0 },
     timestamp: { type: "string", format: "date-time" }
   }
@@ -129,11 +130,12 @@ export const healthResponseSchema = {
 export const readyResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "modelLoaded", "version"],
+  required: ["status", "modelLoaded", "version", "releaseVersion"],
   properties: {
     status: { type: "string", enum: ["ready", "not-ready"] },
     modelLoaded: { type: "boolean" },
     version: { type: "string" },
+    releaseVersion: { type: "string" },
     model: { type: "string" }
   }
 } as const;
@@ -141,10 +143,11 @@ export const readyResponseSchema = {
 export const scoreResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["requestId", "apiVersion", "result"],
+  required: ["requestId", "apiVersion", "releaseVersion", "result"],
   properties: {
     requestId: { type: "string" },
     apiVersion: { type: "string" },
+    releaseVersion: { type: "string" },
     result: riskResultSchema
   }
 } as const;
@@ -162,10 +165,11 @@ export const stressRequestSchema = {
 export const stressResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["requestId", "apiVersion", "method", "scenarioVersion", "severity", "input", "baseline", "stressed", "delta"],
+  required: ["requestId", "apiVersion", "releaseVersion", "method", "scenarioVersion", "severity", "input", "baseline", "stressed", "delta"],
   properties: {
     requestId: { type: "string" },
     apiVersion: { type: "string" },
+    releaseVersion: { type: "string" },
     method: { type: "string", enum: ["deterministic-borrower-sensitivity"] },
     scenarioVersion: { type: "string" },
     severity: { type: "string", enum: ["mild", "severe"] },
@@ -198,10 +202,11 @@ export const batchRequestSchema = {
 export const batchResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["requestId", "apiVersion", "results", "summary"],
+  required: ["requestId", "apiVersion", "releaseVersion", "results", "summary"],
   properties: {
     requestId: { type: "string" },
     apiVersion: { type: "string" },
+    releaseVersion: { type: "string" },
     results: {
       type: "array",
       maxItems: MAX_BATCH_SIZE,
@@ -243,13 +248,14 @@ export const modelResponseSchema = {
   type: "object",
   additionalProperties: false,
   required: [
-    "requestId", "apiVersion", "name", "version", "trainedAt", "target", "features",
+    "requestId", "apiVersion", "releaseVersion", "name", "version", "trainedAt", "target", "features",
     "monotoneConstraints", "calibration", "challenger", "metrics", "diagnostics",
     "trainingBounds", "training", "treeCount", "policy", "sensitivity"
   ],
   properties: {
     requestId: { type: "string" },
     apiVersion: { type: "string" },
+    releaseVersion: { type: "string" },
     name: { type: "string" },
     version: { type: "string" },
     trainedAt: { type: "string" },

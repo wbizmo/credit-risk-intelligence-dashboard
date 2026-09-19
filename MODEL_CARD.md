@@ -2,20 +2,33 @@
 
 ## System context
 
-CRIX package release: **v3.1.0**  
+CRIX package release: **v3.2.0**  
 API namespace: **`/api/v3`**  
 Bundled primary model: **CRIX-MonoBoost 2.0.0**  
 Live policy: **CRIX-Policy 3.0**
 
-The package, API, model and policy versions are intentionally independent. v3.1 expands the offline research stack without changing the live v3 probability target or silently promoting research models into runtime scoring.
+The package, API, model and policy versions are intentionally independent. v3.2 expands performance evidence, tail-risk research, model-governance controls, deployment hardening and supply-chain reproducibility without changing the live v3 probability target or silently promoting research models into runtime scoring.
 
 ## Intended use
 
 CRIX-MonoBoost is an engineering/model-risk demonstration showing how a real-data credit-risk model can be trained with point-in-time discipline, calibrated on later originations, challenged, explained, sensitivity-tested and exposed through a governed API contract.
 
-CRIX v3.1 additionally includes offline research modules for lifetime PD, delinquency migration, empirical LGD/EAD, correlated portfolio loss, macro-conditioned stress, IFRS 9-style ECL, Basel-style/economic capital and constrained portfolio optimisation.
+CRIX v3.2 includes offline lifetime PD, delinquency migration, empirical LGD/EAD, Gaussian/Student-t portfolio loss, EVT/GPD tail analysis, macro-conditioned stress, IFRS 9-style ECL, Basel-style/economic capital, constrained portfolio optimisation, distribution-shift governance, explanation-fidelity validation and tamper-evident lineage.
 
 It is **not approved for real lending decisions, accounting policy or regulatory-capital use**.
+
+## v3.2 engineering / governance evidence
+
+- compiled champion benchmark: **~536,854 ops/s**, p50 **0.003746 ms** on the recorded Batch A CI host;
+- compiled full assessment p50: **0.018628 ms** versus **0.025889 ms** for the reference path;
+- sparse explanation work: **317** tree visits versus **384** full rescoring visits (**17.45%** reduction);
+- shared tail attribution: measured **~2.80×** reference speedup at three quantiles and **~4.63×** at five quantiles before the final bucket-accumulation optimization;
+- drift adversarial-validation AUC: **0.5593**, with aggregate and all four feature-level statuses passing the governed review bands;
+- explanation-fidelity sample n=512: **97.59%** mean top-3 overlap, **95.33%** sign agreement and **96.94%** perturbation stability;
+- privacy-bounded telemetry loopback overhead: **~5.3% mean** and **~1.0% p95** with the in-memory exporter;
+- Batch D supply-chain certification: **0 known Node production vulnerabilities** and **0 known vulnerabilities** in the governed Python research lock.
+
+No GPU speedup is claimed for v3.2.0 because the connected release infrastructure has no CUDA device. CuPy remains optional and NumPy remains the canonical deterministic evidence backend.
 
 ## Primary target
 
@@ -135,7 +148,7 @@ The runtime challenger is a standardized logistic-regression model trained on th
 
 Every live request surfaces `challengerPd`, champion/challenger disagreement and confidence effects.
 
-v3.1 adds a separate research-governance comparison using the **actual embedded challenger** on the same LendingClub calibration/OOT cohorts. Promotion evidence is deliberately broader than AUC and includes calibration, Brier/log loss, PSI/stability, bootstrap uncertainty and segment diagnostics. A challenger is not promoted merely because one discrimination metric is marginally higher.
+The offline research stack includes a separate research-governance comparison using the **actual embedded challenger** on the same LendingClub calibration/OOT cohorts. Promotion evidence is deliberately broader than AUC and includes calibration, Brier/log loss, PSI/stability, bootstrap uncertainty and segment diagnostics. A challenger is not promoted merely because one discrimination metric is marginally higher.
 
 ## Out-of-distribution handling
 
@@ -179,7 +192,7 @@ where runtime LGD is a deterministic engineering approximation and runtime EAD i
 
 Because the live primary PD target is final-resolution risk, live expected-loss outputs inherit that horizon limitation.
 
-## v3.1 offline lifetime-risk stack
+## Offline lifetime-risk stack
 
 ### Historical as-of / time machine
 
@@ -221,7 +234,7 @@ Heavy simulation is deliberately excluded from Fastify request handling to avoid
 
 The live `/api/v3/risk/stress` endpoint remains **deterministic borrower sensitivity** (`CRIX-Sensitivity 1.0`).
 
-v3.1 adds a separate offline macro research layer with point-in-time macro joins and an empirical unemployment/default relationship demonstration. The U.S. unemployment series used by the public research run is frozen in the repository with provenance so validation is not dependent on a live FRED request.
+The offline research stack includes a separate macro research layer with point-in-time macro joins and an empirical unemployment/default relationship demonstration. The U.S. unemployment series used by the public research run is frozen in the repository with provenance so validation is not dependent on a live FRED request.
 
 This is research evidence, not an institutionally validated macroeconometric stress model.
 
@@ -266,7 +279,7 @@ Model retraining and risk-appetite changes can therefore be governed independent
 
 The `/api/v3/risk/stress` endpoint applies fixed borrower-level mild/severe shocks and reruns the ordinary live model/policy lifecycle.
 
-It is **not** the v3.1 macro research engine. Context fields absent from the champion cannot directly alter champion PD unless they change a trained derived feature.
+It is **not** the offline macro research engine. Context fields absent from the champion cannot directly alter champion PD unless they change a trained derived feature.
 
 ## Runtime efficiency and bounded work
 
@@ -290,7 +303,7 @@ This is a **tamper-evident hash chain with no distributed-ledger dependency**. A
 
 The public demo must not receive real consumer-credit data or raw private portfolios.
 
-Research reports/artifacts are aggregate or public-source evidence. Runtime protections include strict request schemas, request/body/time bounds, endpoint rate limits, CORS allow-listing, Helmet, optional constant-time API-key authentication, log redaction, sanitized errors, finite-number guards and model-artifact integrity checks.
+Research reports/artifacts are aggregate or public-source evidence. Runtime protections include strict request schemas, request/body/time bounds, key-aware and supplementary-IP rate limits, CORS allow-listing, Helmet, explicit `public-demo` / fail-closed `required` authentication, bounded current+next constant-time API-key rotation, explicit proxy-hop trust, privacy-bounded OpenTelemetry, log redaction, sanitized errors, finite-number guards and model-artifact integrity checks.
 
 A regulated deployment would require stronger IAM, tenant isolation, immutable audit retention and formal data-governance controls.
 
@@ -353,7 +366,7 @@ Lifetime-risk research:
 - `model/ead.py`
 - `model/time_machine.py`
 
-Advanced v3.1 research:
+Advanced offline research:
 
 - `model/portfolio_risk.py`
 - `model/macro_stress.py`
@@ -363,4 +376,4 @@ Advanced v3.1 research:
 - `model/challenger_governance.py`
 - `model/train_advanced_risk.py`
 
-GitHub Actions runs the complete model/governance suite and full research validation before merge. The v3.1 roadmap merge was gated by **57 passing Python tests**, successful live-runtime CI, champion retrain validation, isolated historical risk-stack reproduction and integrated advanced-risk evidence generation.
+GitHub Actions runs the complete model/governance suite and full research validation before merge. Batch D certification reached **64 passing Node tests** and **91 passing Python governance/research tests** with one optional GPU-only skip, plus real-data champion retrain equivalence, historical risk-stack reproduction, advanced-risk evidence, registry/lineage checks and clean governed dependency audits. The final v3.2 release branch adds further repo-wide optimization/regression tests and must pass the same gates before release.

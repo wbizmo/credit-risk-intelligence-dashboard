@@ -150,12 +150,21 @@ def _hazard_logits(model: Mapping[str, object], features: np.ndarray, horizon: i
         x = x.reshape(1, -1)
     if x.shape[1] != len(names) or horizon < 1 or horizon > maximum:
         raise ValueError("invalid lifetime PD inference request")
-    repeated = np.repeat(x, horizon, axis=0)
-    months = np.tile(np.arange(1, horizon + 1, dtype=np.int16), len(x))
-    design = _design_matrix(repeated, months, means, scales, bucket_ends)
-    if design.shape[1] != len(coefficients):
+    if not np.isfinite(x).all() or not np.isfinite(means).all() or not np.isfinite(scales).all():
+        raise ValueError("lifetime PD inference inputs/model scaling must be finite")
+    if len(means) != len(names) or len(scales) != len(names) or np.any(scales <= 0):
+        raise ValueError("survival artifact scaling dimensions are invalid")
+
+    feature_count = len(names)
+    age_count = len(bucket_ends)
+    if len(coefficients) != feature_count + age_count:
         raise ValueError("survival artifact coefficient dimensions are invalid")
-    return (intercept + design @ coefficients).reshape(len(x), horizon)
+
+    standardized = (x - means) / scales
+    feature_logit = intercept + standardized @ coefficients[:feature_count]
+    months = np.arange(1, horizon + 1, dtype=np.int16)
+    age_logit = _age_basis(months, bucket_ends) @ coefficients[feature_count:]
+    return feature_logit[:, None] + age_logit[None, :]
 
 
 def predict_term_structure(model: Mapping[str, object], features: np.ndarray, horizon: int = 36) -> dict[str, np.ndarray]:

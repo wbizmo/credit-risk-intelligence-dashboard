@@ -25,8 +25,10 @@ After the first pass has produced the scenario loss vector and empirical thresho
 1. regenerates each scenario/default chunk once;
 2. forms that chunk's weighted obligor losses once;
 3. assigns scenarios to disjoint loss-threshold buckets;
-4. sums each scenario row into one bucket;
-5. cumulatively combines the buckets to recover every supported tail set.
+4. accumulates each scenario row directly into one backend-native disjoint bucket;
+5. cumulatively combines the bucket totals to recover every supported tail set.
+
+The final v3.2 audit removed the earlier per-bucket mask scan inside each chunk, so the implementation now matches the documented complexity rather than carrying a hidden `O(S*Q)` mask term.
 
 For `S` scenarios, `N` obligors and `Q` supported quantiles, the dominant contribution replay is:
 
@@ -36,7 +38,7 @@ O(S*N + S*log(Q) + Q*N)
 
 rather than replaying the full `S*N` simulation `Q` times. Chunk memory remains `O(C*N + S + Q*N)`; no full `S x N` matrix is retained.
 
-The reference replay is retained only as a private benchmark/test oracle.
+The reference replay is retained only as a private benchmark/test oracle. Before the final indexed-bucket optimization, the shared replay measured approximately **2.80×** the reference throughput for three quantiles and **4.63×** for five quantiles in CI; the release branch reruns the benchmark rather than assuming those ratios improved.
 
 ## Dependency models
 
@@ -108,6 +110,8 @@ Use the CuPy package matching the actual CUDA runtime when it is not CUDA 12. Re
 
 Every simulation reports backend name, device, dtype, seed, chunk size and reproducibility class. CPU `lossDigest` remains the canonical reproducibility artifact. GPU runs are evaluated for same-backend repeatability and statistical agreement; CPU/GPU digest equality is not claimed.
 
+Invariant thresholds and low-rank loading/residual arrays are transferred/prepared once per simulation and reused across chunks rather than being recreated inside the `O(S/C)` chunk loop.
+
 Run the benchmark harness with:
 
 ```bash
@@ -116,6 +120,10 @@ python model/benchmark_portfolio.py
 ```
 
 The output records wall time, peak host RSS, scenarios/portfolio sizes, tail-attribution speedup, and—when a usable GPU exists—device identity, memory-use evidence, transfer overhead and CPU/CuPy speedup. A CPU-only machine reports GPU unavailability explicitly; it does not fabricate acceleration evidence.
+
+### v3.2 GPU evidence boundary
+
+The v3.2.0 release infrastructure available to this repository is CPU-only. Therefore **no CuPy speedup, crossover point, GPU-memory peak or transfer-vs-compute claim is published for this release**. The benchmark harness records all of those fields when executed on documented CUDA hardware, and optional GPU tests cover same-backend repeatability/statistical agreement when a CUDA device exists. NumPy remains the canonical release evidence path.
 
 ## Empirical Monte Carlo versus EVT
 

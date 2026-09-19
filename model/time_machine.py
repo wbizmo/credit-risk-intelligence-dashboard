@@ -32,8 +32,11 @@ class SnapshotSpec:
             raise ValueError("snapshot windows must be strictly chronological")
         if self.mode not in {"point-in-time", "retrospective-resolved"}:
             raise ValueError("unsupported snapshot mode")
-        if len(self.source_sha256) != 64:
-            raise ValueError("snapshot source checksum must be SHA-256")
+        if (
+            len(self.source_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in self.source_sha256)
+        ):
+            raise ValueError("snapshot source checksum must be a lowercase SHA-256 digest")
         train_label = np.datetime64(self.train_label_cutoff or self.train_end, "D")
         calibration_label = np.datetime64(self.calibration_label_cutoff or self.calibration_end, "D")
         if train_label < dates[0] or calibration_label < dates[1]:

@@ -61,6 +61,20 @@ class MacroStressTests(unittest.TestCase):
         joined = asof_join_macro(["2020-02-15", "2020-03-01"], observations)
         self.assertEqual(joined.tolist(), [4.0, 5.0])
 
+    def test_asof_join_handles_unsorted_queries_and_same_publish_date(self) -> None:
+        observations = [
+            MacroObservation("2020-01-01", "2020-03-01", 1.0),
+            MacroObservation("2020-02-01", "2020-03-01", 2.0),
+            MacroObservation("2019-12-01", "2020-02-01", 0.5),
+        ]
+        joined = asof_join_macro(
+            ["2020-03-02", "2020-01-15", "2020-02-15"],
+            observations,
+        )
+        self.assertEqual(joined[0], 2.0)
+        self.assertTrue(np.isnan(joined[1]))
+        self.assertEqual(joined[2], 0.5)
+
     def test_univariate_logit_recovers_positive_macro_relationship(self) -> None:
         x = np.repeat(np.array([4.0, 6.0, 8.0, 10.0]), 1500)
         p = 1 / (1 + np.exp(-(-4.0 + 0.35 * x)))
@@ -96,6 +110,16 @@ class Ifrs9Tests(unittest.TestCase):
         self.assertEqual(determine_stage(0.04, 0.05, 0, True, policy=policy)["stage"], 3)
         self.assertEqual(determine_stage(0.04, 0.05, 0, False, previous_stage=2, months_since_cure=1, policy=policy)["stage"], 2)
 
+    def test_stage_and_policy_validation_fail_closed_on_invalid_inputs(self) -> None:
+        with self.assertRaisesRegex(ValueError, "finite"):
+            determine_stage(float("nan"), 0.1, 0, False)
+        with self.assertRaisesRegex(ValueError, "non-negative integer"):
+            determine_stage(0.1, 0.1, -1, False)
+        with self.assertRaisesRegex(ValueError, "previous_stage"):
+            determine_stage(0.1, 0.1, 0, False, previous_stage=4)
+        with self.assertRaises(ValueError):
+            EclPolicy(stage2_dpd=90, stage3_dpd=30)
+
     def test_scenario_weighted_ecl_matches_hand_calculation(self) -> None:
         scenarios = {
             "baseline": {"weight": 0.75, "cumulativePd": [0.10, 0.19], "lgd": [0.5, 0.5], "ead": [100.0, 80.0]},
@@ -125,6 +149,12 @@ class CapitalTests(unittest.TestCase):
         self.assertEqual(low["formulaVersion"], "basel-irb-corporate-research-v1")
         self.assertIn("not regulatory compliance", low["status"].lower())
 
+    def test_irb_and_tail_contribution_domains_fail_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "maturity_years"):
+            irb_corporate_capital(0.02, 0.45, 1000.0, maturity_years=6.0)
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            reconcile_tail_capital([10.0, -1.0], [2.0, 3.0])
+
     def test_economic_capital_keeps_expected_loss_separate(self) -> None:
         result = economic_capital(expected_loss=100.0, tail_loss=260.0, confidence=0.99, tail_measure="VaR")
         self.assertEqual(result["economicCapital"], 160.0)
@@ -135,7 +165,100 @@ class CapitalTests(unittest.TestCase):
         self.assertAlmostEqual(sum(result["economicCapitalContributions"]), result["economicCapital"], places=12)
 
 
+def _reference_optimize(
+    candidates,
+    *,
+    budget,
+    max_expected_loss=None,
+    max_segment_share=None,
+    min_approval_count=0,
+):
+    eligible = [candidate for candidate in candidates if candidate.eligible]
+    best = None
+    for mask in range(1 << len(eligible)):
+        selected = [eligible[index] for index in range(len(eligible)) if mask & (1 << index)]
+        if len(selected) < min_approval_count:
+            continue
+        exposure = sum(candidate.exposure for candidate in selected)
+        expected_loss = sum(candidate.expected_loss for candidate in selected)
+        if exposure > budget + 1e-12:
+            continue
+        if max_expected_loss is not None and expected_loss > max_expected_loss + 1e-12:
+            continue
+        if max_segment_share is not None and exposure > 0:
+            segment_exposure = {}
+            for candidate in selected:
+                segment_exposure[candidate.segment] = segment_exposure.get(candidate.segment, 0.0) + candidate.exposure
+            if any(value / exposure > max_segment_share + 1e-12 for value in segment_exposure.values()):
+                continue
+        expected_return = sum(candidate.expected_return for candidate in selected)
+        ids = tuple(sorted(candidate.candidate_id for candidate in selected))
+        score = (expected_return, exposure, tuple(reversed(ids)))
+        if best is None or score > best[0]:
+            best = (score, ids, expected_loss, exposure)
+    return best
+
+
 class DecisioningTests(unittest.TestCase):
+    def test_exact_optimizer_matches_reference_across_random_small_portfolios(self) -> None:
+        rng = np.random.default_rng(20260919)
+        for case in range(20):
+            count = int(rng.integers(1, 9))
+            candidates = [
+                Candidate(
+                    f"c{index:02d}",
+                    float(rng.integers(10, 120)),
+                    float(rng.integers(-5, 30)),
+                    float(rng.integers(0, 10)),
+                    ("x", "y", "z")[index % 3],
+                    bool(rng.integers(0, 5)),
+                )
+                for index in range(count)
+            ]
+            budget = float(rng.integers(40, 300))
+            max_loss = float(rng.integers(5, 30))
+            reference = _reference_optimize(
+                candidates,
+                budget=budget,
+                max_expected_loss=max_loss,
+                max_segment_share=0.75,
+            )
+            actual = optimize_exact(
+                candidates,
+                budget=budget,
+                max_expected_loss=max_loss,
+                max_segment_share=0.75,
+            )
+            if reference is None:
+                self.assertEqual(actual["status"], "infeasible", case)
+            else:
+                _, ids, expected_loss, exposure = reference
+                self.assertEqual(actual["status"], "optimal", case)
+                self.assertEqual(tuple(actual["selectedIds"]), ids, case)
+                self.assertAlmostEqual(actual["expectedLoss"], expected_loss, places=9)
+                self.assertAlmostEqual(actual["exposure"], exposure, places=9)
+
+    def test_decisioning_validation_rejects_ambiguous_and_nonfinite_inputs(self) -> None:
+        duplicate = [
+            Candidate("same", 10, 2, 1, "x"),
+            Candidate("same", 20, 3, 1, "y"),
+        ]
+        with self.assertRaisesRegex(ValueError, "candidate_id"):
+            optimize_exact(duplicate, budget=100)
+        with self.assertRaises(ValueError):
+            optimize_exact([Candidate("a", 10, 2, 1, "x")], budget=100, max_expected_loss=float("nan"))
+        with self.assertRaises(ValueError):
+            optimize_exact([Candidate("a", 10, 2, 1, "x")], budget=100, min_approval_count=1.5)
+        with self.assertRaises(ValueError):
+            sorted_equal_exposure_frontier([], budget=-1)
+
+        duplicate_models = [
+            ChallengerMetrics("same", "cohort", 0.7, 0.15, 1.0, 0.0, 0.05, 0.2),
+            ChallengerMetrics("same", "cohort", 0.71, 0.14, 1.0, 0.0, 0.05, 0.19),
+        ]
+        with self.assertRaisesRegex(ValueError, "model_id"):
+            compare_challengers(duplicate_models, incumbent_id="same")
+
     def test_higher_auc_challenger_can_fail_promotion_gate(self) -> None:
         incumbent = ChallengerMetrics("incumbent", "same", 0.70, 0.16, 1.02, 0.01, 0.05, 0.17)
         flashy = ChallengerMetrics("flashy", "same", 0.75, 0.15, 1.55, 0.02, 0.04, 0.16)

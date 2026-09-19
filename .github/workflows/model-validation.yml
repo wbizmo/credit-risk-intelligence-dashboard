@@ -115,6 +115,14 @@ jobs:
           }, sort_keys=True))
           PY
           cp /tmp/crix-monoboost-v2.committed.json model/artifacts/crix-monoboost-v2.json
+      - name: Restore approved lineage evidence after retrain validation
+        run: |
+          # model/train.py regenerates TRAINING_REPORT.md as retrain evidence.
+          # The lineage manifest intentionally hashes the reviewed, committed
+          # evidence files, so restore those bytes before the read-only lineage
+          # verification instead of weakening or rewriting the manifest in CI.
+          git restore --source=HEAD -- MODEL_CARD.md model/TRAINING_REPORT.md
+          git diff --exit-code -- MODEL_CARD.md model/TRAINING_REPORT.md
       - name: Verify committed training lineage read-only
         run: |
           python model/lineage.py verify \

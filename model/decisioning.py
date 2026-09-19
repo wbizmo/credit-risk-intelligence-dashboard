@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import itertools
+import heapq
 import math
 from typing import Iterable
 
@@ -42,6 +42,8 @@ def compare_challengers(models: Iterable[ChallengerMetrics], *, incumbent_id: st
     if not models:
         raise ValueError("at least one model is required")
     by_id = {m.model_id: m for m in models}
+    if len(by_id) != len(models):
+        raise ValueError("model_id values must be unique")
     if incumbent_id not in by_id:
         raise ValueError("incumbent model not found")
     incumbent = by_id[incumbent_id]
@@ -108,31 +110,110 @@ def optimize_exact(
     candidates = list(candidates)
     if not math.isfinite(float(budget)) or budget < 0.0:
         raise ValueError("budget must be finite and non-negative")
-    if max_expected_loss is not None and max_expected_loss < 0.0:
-        raise ValueError("max_expected_loss cannot be negative")
+    if max_expected_loss is not None and (
+        not math.isfinite(float(max_expected_loss)) or max_expected_loss < 0.0
+    ):
+        raise ValueError("max_expected_loss must be finite and non-negative")
     if max_segment_share is not None and not (0.0 < max_segment_share <= 1.0):
         raise ValueError("max_segment_share must lie in (0, 1]")
-    if min_approval_count < 0:
-        raise ValueError("min_approval_count cannot be negative")
-    eligible = [c for c in candidates if c.eligible]
+    if not isinstance(min_approval_count, int) or min_approval_count < 0:
+        raise ValueError("min_approval_count must be a non-negative integer")
+    ids = [candidate.candidate_id for candidate in candidates]
+    if len(ids) != len(set(ids)):
+        raise ValueError("candidate_id values must be unique")
+
+    eligible = [candidate for candidate in candidates if candidate.eligible]
     if len(eligible) > 24:
         raise ValueError("exact optimizer is intentionally bounded to 24 eligible candidates; use a governed solver for larger coupled problems")
 
-    best: tuple[float, float, tuple[str, ...], dict] | None = None
-    for mask in range(1 << len(eligible)):
-        selected = [eligible[i] for i in range(len(eligible)) if mask & (1 << i)]
-        if len(selected) < min_approval_count:
-            continue
-        feasible, metrics = _evaluate_subset(selected, budget, max_expected_loss, max_segment_share)
-        if not feasible:
-            continue
-        expected_return = sum(c.expected_return for c in selected)
-        ids = tuple(sorted(c.candidate_id for c in selected))
-        candidate_score = (expected_return, metrics["exposure"], tuple(reversed(ids)))
-        if best is None or candidate_score > (best[0], best[1], tuple(reversed(best[2]))):
-            best = (expected_return, metrics["exposure"], ids, metrics)
+    n = len(eligible)
+    lex_rank = {
+        candidate_id: rank
+        for rank, candidate_id in enumerate(sorted(candidate.candidate_id for candidate in eligible))
+    }
+    segments = sorted({candidate.segment for candidate in eligible})
+    segment_exposure: dict[str, float] = {segment: 0.0 for segment in segments}
+    segment_version: dict[str, int] = {segment: 0 for segment in segments}
+    segment_heap: list[tuple[float, str, int]] = [
+        (0.0, segment, 0)
+        for segment in segments
+    ]
+    heapq.heapify(segment_heap)
+    selected_count = 0
+    exposure = 0.0
+    expected_loss = 0.0
+    expected_return = 0.0
+    tie_mask = 0
+    previous_gray = 0
+    best_score: tuple[float, float, int] | None = None
+    best_selection = 0
 
-    if best is None:
+    def max_segment_exposure() -> float:
+        while segment_heap:
+            negative_value, segment, version = segment_heap[0]
+            if segment_version[segment] == version:
+                return -negative_value
+            heapq.heappop(segment_heap)
+        return 0.0
+
+    def update_segment(segment: str, delta: float) -> None:
+        updated = segment_exposure[segment] + delta
+        if abs(updated) <= 1e-12:
+            updated = 0.0
+        segment_exposure[segment] = updated
+        version = segment_version[segment] + 1
+        segment_version[segment] = version
+        heapq.heappush(segment_heap, (-updated, segment, version))
+
+        # Lazy invalidation keeps O(log G) updates, while periodic rebuilds keep
+        # auxiliary heap storage bounded to O(G) rather than growing with 2^n.
+        if len(segment_heap) > max(8, 4 * len(segments)):
+            segment_heap[:] = [
+                (-segment_exposure[name], name, segment_version[name])
+                for name in segments
+            ]
+            heapq.heapify(segment_heap)
+
+    # Gray-code enumeration flips exactly one candidate per subset. This keeps
+    # exposure/loss/return/segment state incremental rather than rebuilding an
+    # O(n) selected list for every one of 2^n subsets.
+    for step in range(1 << n):
+        gray = step ^ (step >> 1)
+        if step:
+            changed = gray ^ previous_gray
+            index = changed.bit_length() - 1
+            candidate = eligible[index]
+            adding = bool(gray & changed)
+            sign = 1.0 if adding else -1.0
+
+            selected_count += 1 if adding else -1
+            exposure += sign * candidate.exposure
+            expected_loss += sign * candidate.expected_loss
+            expected_return += sign * candidate.expected_return
+            tie_mask ^= 1 << lex_rank[candidate.candidate_id]
+
+            update_segment(candidate.segment, sign * candidate.exposure)
+            previous_gray = gray
+
+        if selected_count < min_approval_count:
+            continue
+        if exposure > budget + 1e-12:
+            continue
+        if max_expected_loss is not None and expected_loss > max_expected_loss + 1e-12:
+            continue
+        if (
+            max_segment_share is not None
+            and exposure > 0.0
+            and max_segment_exposure() > max_segment_share * exposure + 1e-12
+        ):
+            continue
+
+        score = (expected_return, exposure, tie_mask)
+        if best_score is None or score > best_score:
+            best_score = score
+            best_selection = gray
+
+    if best_score is None:
         return {
             "status": "infeasible",
             "selectedIds": [],
@@ -141,23 +222,42 @@ def optimize_exact(
             "exposure": 0.0,
             "reason": "no eligible portfolio satisfies all hard constraints",
         }
-    expected_return, exposure, ids, metrics = best
+
+    selected_candidates = [
+        eligible[index]
+        for index in range(n)
+        if best_selection & (1 << index)
+    ]
+    feasible, metrics = _evaluate_subset(
+        selected_candidates,
+        budget,
+        max_expected_loss,
+        max_segment_share,
+    )
+    if not feasible:
+        raise RuntimeError("incremental optimizer state diverged from final constraint revalidation")
+
+    final_return = sum(candidate.expected_return for candidate in selected_candidates)
+    selected_ids = sorted(candidate.candidate_id for candidate in selected_candidates)
+    final_exposure = metrics["exposure"]
     return {
         "status": "optimal",
-        "selectedIds": list(ids),
-        "expectedReturn": expected_return,
+        "selectedIds": selected_ids,
+        "expectedReturn": final_return,
         "expectedLoss": metrics["expectedLoss"],
-        "exposure": exposure,
+        "exposure": final_exposure,
         "segmentExposure": metrics["segmentExposure"],
         "bindingConstraints": {
-            "budget": abs(exposure - budget) < 1e-10,
+            "budget": abs(final_exposure - budget) < 1e-10,
             "expectedLoss": max_expected_loss is not None and abs(metrics["expectedLoss"] - max_expected_loss) < 1e-10,
         },
-        "method": "bounded exhaustive 0/1 search",
+        "method": "bounded Gray-code exhaustive 0/1 search; amortized O(2^n log G), O(G) segment state",
     }
 
 
 def sorted_equal_exposure_frontier(candidates: Iterable[Candidate], *, budget: float) -> dict:
+    if budget < 0 or not math.isfinite(float(budget)):
+        raise ValueError("budget must be finite and non-negative")
     candidates = [c for c in candidates if c.eligible]
     if not candidates:
         return {"status": "optimal", "selectedIds": [], "expectedReturn": 0.0, "exposure": 0.0, "method": "sorted-prefix"}
@@ -165,8 +265,6 @@ def sorted_equal_exposure_frontier(candidates: Iterable[Candidate], *, budget: f
     if len(exposures) != 1:
         raise ValueError("sorted equal-exposure frontier requires identical candidate exposures")
     exposure = candidates[0].exposure
-    if budget < 0 or not math.isfinite(float(budget)):
-        raise ValueError("budget must be finite and non-negative")
     count = min(len(candidates), int(math.floor(budget / exposure + 1e-12)))
     ranked = sorted(candidates, key=lambda c: (-c.expected_return, c.expected_loss, c.candidate_id))
     selected = ranked[:count]

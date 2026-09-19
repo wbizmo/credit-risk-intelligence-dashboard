@@ -96,7 +96,15 @@ def _tail_case(*, n: int, scenarios: int, quantiles: tuple[float, ...], seed: in
     shared = _measure(run_shared)
     reference = _measure(run_reference)
     for key in shared_result:
-        np.testing.assert_allclose(shared_result[key], reference_result[key], rtol=0, atol=1e-10)
+        # Indexed bucket accumulation changes floating reduction order while
+        # preserving the same mathematical contribution totals. Keep a strict
+        # absolute floor plus scale-aware tolerance for machine-precision drift.
+        np.testing.assert_allclose(
+            shared_result[key],
+            reference_result[key],
+            rtol=1e-12,
+            atol=1e-10,
+        )
 
     return {
         "portfolioSize": n,
