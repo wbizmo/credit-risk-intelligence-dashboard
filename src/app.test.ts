@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApp } from "./app";
+import { buildApp, LOGGER_REDACT_PATHS } from "./app";
 import type { AppConfig } from "./config";
 
 const application = {
@@ -37,6 +37,13 @@ const config = (apiKey?: string, overrides: Partial<AppConfig> = {}): AppConfig 
 });
 
 describe("CRIX HTTP API", () => {
+  it("keeps both supported credential header paths in the logger redaction contract", () => {
+    expect(LOGGER_REDACT_PATHS).toEqual([
+      "req.headers.authorization",
+      "req.headers.x-api-key",
+    ]);
+  });
+
   it("fails app construction closed for missing or weak required-mode credentials", async () => {
     await expect(buildApp(config(undefined, {
       authMode: "required",
