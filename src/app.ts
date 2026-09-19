@@ -9,6 +9,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { loadConfig, validateRuntimeSecurityConfig, type AppConfig } from "./config";
 import { apiKeyFromHeader, matchApiKey, rateLimitIdentity } from "./security/auth";
 import { createTelemetry, type Telemetry } from "./telemetry";
+import { RELEASE_VERSION } from "./version";
 import { assessRisk, modelMetadata, stressApplication, verifyModelIntegrity } from "./risk/engine";
 import type { ApplicationInput, StressSeverity } from "./risk/types";
 import {
@@ -133,7 +134,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       openapi: OPENAPI_VERSION,
       info: {
         title: "CRIX Credit Risk Intelligence API",
-        version: API_VERSION,
+        version: RELEASE_VERSION,
         description: "Stateless credit-risk scoring, model diagnostics, policy decisioning and stress testing. CRIX-MonoBoost 2.0 is trained and calibrated on resolved real-world LendingClub originations with chronological out-of-time evaluation. Its reported PD is final-loan-resolution default risk, not a 12-month PD, and the public service remains an engineering/model-risk demonstration rather than an approved consumer-credit decision system.",
       },
       tags: [
@@ -244,6 +245,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
   }, async () => ({
     service: "CRIX Credit Risk Intelligence API",
     apiVersion: API_VERSION,
+    releaseVersion: RELEASE_VERSION,
     status: "ok",
     authentication: config.authMode,
     endpoints: {
@@ -262,6 +264,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     status: "ok",
     service: "crix-credit-risk-intelligence-api",
     version: API_VERSION,
+    releaseVersion: RELEASE_VERSION,
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
   }));
@@ -270,8 +273,19 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     config: { rateLimit: { max: routeLimit(600), timeWindow: "1 minute" } },
     schema: { tags: ["System"], summary: "Readiness probe", response: { 200: readyResponseSchema, 503: readyResponseSchema } },
   }, async (_request, reply) => {
-    if (!modelReady) return reply.code(503).send({ status: "not-ready", modelLoaded: false, version: API_VERSION });
-    return { status: "ready", modelLoaded: true, version: API_VERSION, model: modelMetadata().name };
+    if (!modelReady) return reply.code(503).send({
+      status: "not-ready",
+      modelLoaded: false,
+      version: API_VERSION,
+      releaseVersion: RELEASE_VERSION,
+    });
+    return {
+      status: "ready",
+      modelLoaded: true,
+      version: API_VERSION,
+      releaseVersion: RELEASE_VERSION,
+      model: modelMetadata().name,
+    };
   });
 
   app.get("/openapi.json", {
@@ -288,7 +302,12 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       description: "Returns model version, target semantics, calibration, out-of-time validation metrics, training provenance, feature metadata, diagnostics and current policy thresholds. Tree internals are intentionally not returned by the API.",
       response: { 200: modelResponseSchema, 401: errorSchema, 429: errorSchema },
     },
-  }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...modelMetadata() }));
+  }, async (request) => ({
+    requestId: request.id,
+    apiVersion: API_VERSION,
+    releaseVersion: RELEASE_VERSION,
+    ...modelMetadata(),
+  }));
 
   app.post<{ Body: ApplicationInput }>(`${API_MAJOR_PATH}/risk/score`, {
     config: { rateLimit: { max: routeLimit(60), timeWindow: "1 minute" } },
@@ -303,7 +322,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     const startedAt = performance.now();
     const result = assessRisk(request.body);
     telemetry.recordScore(result, performance.now() - startedAt);
-    return { requestId: request.id, apiVersion: API_VERSION, result };
+    return { requestId: request.id, apiVersion: API_VERSION, releaseVersion: RELEASE_VERSION, result };
   });
 
   app.post<{ Body: { application: ApplicationInput; severity: StressSeverity } }>(`${API_MAJOR_PATH}/risk/stress`, {
@@ -319,7 +338,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     const startedAt = performance.now();
     const result = stressApplication(request.body.application, request.body.severity);
     telemetry.recordStress(result.stressed, performance.now() - startedAt);
-    return { requestId: request.id, apiVersion: API_VERSION, ...result };
+    return { requestId: request.id, apiVersion: API_VERSION, releaseVersion: RELEASE_VERSION, ...result };
   });
 
   app.post<{ Body: { applications: ApplicationInput[] } }>(`${API_MAJOR_PATH}/risk/batch`, {
@@ -360,6 +379,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     return {
       requestId: request.id,
       apiVersion: API_VERSION,
+      releaseVersion: RELEASE_VERSION,
       results,
       summary: {
         count: results.length,
