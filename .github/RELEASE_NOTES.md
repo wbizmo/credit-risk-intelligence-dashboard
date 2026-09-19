@@ -1,90 +1,64 @@
-# CRIX v3.1.0 — Advanced Credit-Risk Research Stack
+# CRIX v3.2.0 — Performance, Tail Risk & Model Governance
 
-CRIX v3.1 extends the real-data v3 foundation into a broader, auditable credit-risk research stack while deliberately keeping the live `/api/v3` decisioning contract stable.
+CRIX v3.2.0 is an engineering-hardening release over the real-data v3 foundation. It makes the runtime measurably leaner, expands the offline portfolio/tail-risk stack, strengthens model-risk governance, hardens deployment/authentication and makes dependency/lineage evidence reproducible—without changing the live probability target or silently promoting a research model.
 
-The deployed runtime champion is still **CRIX-MonoBoost 2.0.0** and `pd` still means **final-loan-resolution default risk**. The new lifetime, migration, LGD/EAD, portfolio, macro, IFRS 9-style, capital and optimisation capabilities are offline research modules rather than silently replacing the production-facing API semantics.
+**Compatibility:** package release **3.2.0**; API contract **3.0.0** under `/api/v3`; primary champion **CRIX-MonoBoost 2.0.0**; live policy **CRIX-Policy 3.0**.
 
-## Point-in-time governance and reproducibility
+## Measured runtime evidence
 
-- Machine-checkable feature provenance and leakage guards.
-- Granted-loans-only population conditioning with explicit reject-inference limitations.
-- Segmented calibration, bootstrap uncertainty, calibration intercept/slope and PSI stability evidence.
-- Historical as-of snapshots / time-machine infrastructure.
-- Model registry manifests with SHA-256 artifact integrity checks.
-- Cold-cache isolated research retraining that hydrates verified source files rather than assuming Actions cache hits.
+- Compiled champion throughput: **~536,854 ops/s** on the recorded Batch A CI host (Node 22.23.2, AMD EPYC 7763).
+- Compiled champion p50: **0.003746 ms** versus **0.004456 ms** reference.
+- Full compiled assessment p50: **0.018628 ms** versus **0.025889 ms** reference.
+- Sparse explanation budget: **317 tree visits** versus **384** full-rescore visits (**17.45% fewer**).
+- Production rate-limit profile: **60 HTTP 200 + 20 HTTP 429**, **0** 5xx, **0** timeouts.
+- Sustained scoring profile: **500/500 HTTP 200**, no failures.
+- Authenticated scoring profile: **40/40 HTTP 200**.
 
-## Lifetime PD, transitions, LGD and EAD
+These are CI/loopback engineering measurements, not Render cold-start, internet or end-user SLOs.
 
-- Censoring-aware lifetime PD term structures with 3/6/12/24/36-month research horizons.
-- Delinquency-state transition research with cure/backward migration rather than one-way deterioration assumptions.
-- Empirical LGD research using recovery severity/timing evidence.
-- Empirical instalment EAD research plus a separate revolving-credit / CCF research path.
-- Product and target-horizon separation is preserved; incompatible datasets are not pooled into a synthetic universal default model.
+## Portfolio tail-risk research
 
-## Correlated portfolio loss simulation
+- Gaussian and Student-t dependence with homogeneous one-factor or bounded explicit low-rank factor loadings.
+- Single-replay tail attribution with disjoint indexed buckets and bounded memory.
+- POT/GPD EVT tail extrapolation kept explicitly separate from empirical Monte Carlo VaR/ES.
+- Pre-final indexed-bucket benchmark evidence showed **~2.80x** reference speedup at three quantiles and **~4.63x** at five quantiles.
+- Final audit removes the earlier per-quantile mask scan and hoists invariant backend threshold/loading setup out of the chunk loop.
+- Optional CuPy remains research-only and lazy. **No GPU speedup/crossover number is published** because the connected release infrastructure has no CUDA device; NumPy remains the canonical evidence path.
 
-v3.1 adds a deterministic one-factor correlated-default Monte Carlo research engine with bounded-memory chunking.
+## Model governance
 
-It produces:
+- Adversarial validation plus PSI, Jensen-Shannon, Wasserstein, support-breach, missingness and quantile movement.
+- Governed historical adversarial AUC: **0.5593**; aggregate status and all four champion features: **pass**.
+- Offline SHAP-vs-local-sensitivity sample: **n=512**, top-3 overlap **97.59%**, disagreement **7.23%**, absolute rank correlation **0.9141**, sign agreement **95.33%**, bounded-perturbation stability **96.94%**.
+- Versioned dataframe contracts and immutable source-checksum gating before fitting.
+- Tamper-evident lineage linking approved artifact, data, evidence, dependency environment and historical training revision.
 
-- expected loss and unexpected loss;
-- loss variance;
-- VaR and expected shortfall at supported confidence levels;
-- tail-risk contributions that reconcile to the portfolio tail metric;
-- an independent-default comparison baseline;
-- deterministic replay from a fixed seed.
+## Runtime security and telemetry
 
-The counter-based random construction and fixed row-wise loss reduction make seeded results invariant to chunk size. CRIX also withholds 99.9% tail output when the number of scenarios is too small to support a meaningful estimate.
+- Explicit `public-demo` and fail-closed `required` auth modes.
+- Bounded current+next API-key rotation with fixed-length SHA-256 digest comparison and constant-time equality.
+- Proxy trust off by default; trusted-hop count bounded and tested against spoofed forwarding headers.
+- Credential-safe/key-slot-aware rate limiting plus supplementary client-IP quotas.
+- Privacy-bounded OpenTelemetry metrics with bounded labels only.
+- In-memory telemetry comparison: **5.976 ms → 6.295 ms mean** (~**+5.3%**) and **10.750 ms → 10.858 ms p95** (~**+1.0%**).
 
-## Empirical macro stress research
+## Supply chain and reproducibility
 
-The previous `/api/v3/risk/stress` endpoint remains correctly labelled **deterministic borrower sensitivity**.
+- `npm ci` from committed lock plus high-severity production audit.
+- Hash-pinned Python research lock installed with `--require-hashes`.
+- CI intentionally corrupts dependency inputs to prove lock drift fails closed.
+- Batch D certification: **0 known Node production vulnerabilities** and **0 known vulnerabilities in the governed Python research lock**.
+- The unused optbinning → ortools → protobuf chain carrying advisories was removed instead of being cosmetically waived.
 
-v3.1 adds a separate point-in-time macro research layer. The current empirical demonstration uses a frozen, provenance-tracked U.S. unemployment-rate series aligned to the historical LendingClub research vintages. The exact macro snapshot is committed with the code so CI/research reproduction does not depend on FRED network availability at run time.
+## Final repo-wide audit
 
-This is a research macro-conditioned stress model, not a claim of institutionally validated macroeconometric stress testing.
+- Exact constrained portfolio selection no longer rebuilds every subset: bookkeeping moves from `O(n*2^n)` to Gray-code incremental `O(2^n log G)` when segment concentration is enforced, with the 24-candidate exact-search cap retained.
+- Tail attribution now matches its documented `O(S*N + S*log Q + Q*N)` dominant complexity rather than retaining a hidden per-quantile chunk mask scan.
+- Invariant NumPy/CuPy thresholds and low-rank factor arrays are prepared once per simulation instead of inside every chunk.
+- Explanation-fidelity perturbation reuses one matrix instead of copying the full matrix for every feature.
+- Chronological split overlap validation uses vectorized duplicate detection instead of million-row Python sets.
+- Live batch response totals are accumulated in one pass.
 
-## IFRS 9-style ECL research
+## Model-risk boundary
 
-Added an accounting-research engine for:
-
-- Stage 1 / Stage 2 / Stage 3 classification;
-- SICR and days-past-due backstops;
-- default and cure/probation semantics;
-- scenario-weighted expected credit loss;
-- marginal PD conversion from cumulative term structures;
-- EIR-style discounting.
-
-The implementation is intentionally labelled **IFRS 9-style research**. It is not represented as accounting-policy approval or regulatory compliance.
-
-## Basel-style and economic-capital research
-
-Added research analytics that keep expected loss separate from unexpected/tail capital, including:
-
-- IRB-inspired capital calculations;
-- economic capital from portfolio tail loss;
-- tail-capital contribution reconciliation;
-- exposure / LGD / PD sensitivity invariants.
-
-These are **Basel-style / economic-capital research** outputs, not a statement of regulatory capital compliance for any jurisdiction or institution.
-
-## Challenger governance and portfolio optimisation
-
-The actual embedded real-data logistic challenger is now evaluated against CRIX-MonoBoost on the same LendingClub calibration/OOT cohorts rather than being judged on AUC alone.
-
-Governance evidence includes calibration, Brier score, log loss, PSI/stability, bootstrap uncertainty, segment results and deployment-performance context.
-
-The new deterministic portfolio optimiser supports bounded research allocation under explicit constraints such as budget and expected-loss limits. It reports infeasibility instead of silently relaxing constraints, and exact toy portfolios are checked against exhaustive enumeration.
-
-## Engineering discipline
-
-- Full Python model/governance suite: **57 tests**.
-- CI and model-validation gates are both required before merge.
-- Live scoring hot-path work remains bounded and synchronous batch scoring remains capped.
-- Heavy Monte Carlo / optimisation work stays offline instead of blocking the Fastify event loop.
-- Fail-closed validation covers invalid probabilities, scenario weights, correlations, exposures and non-finite inputs.
-- `/api/v3` API semantics and the deployed CRIX-MonoBoost 2.0.0 champion remain unchanged.
-
-## Important model-risk note
-
-CRIX is still a public engineering/model-risk research system, **not an approved production lending or regulatory-capital platform**. Real deployment requires representative institution-specific data, independently validated PD/LGD/EAD and macro models, fairness/proxy testing, exact accounting/regulatory policy interpretation, governed adverse-action reasons, audit retention, authentication/authorization, monitoring and formal model-risk/legal/compliance approval.
+CRIX remains a public engineering/model-risk research system, **not an approved production lending, accounting or regulatory-capital platform**. Institution-specific data, independent validation, fairness/proxy testing, legal/accounting/regulatory interpretation, governed adverse-action processes, production IAM/audit retention and formal model-risk approval remain deployment prerequisites.
