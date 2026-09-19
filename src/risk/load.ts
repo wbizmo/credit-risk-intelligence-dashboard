@@ -63,6 +63,7 @@ interface ScenarioResult {
   cpu: {
     userMs: number;
     systemMs: number;
+    utilizationFraction: number;
   };
 }
 
@@ -200,6 +201,7 @@ async function runScenario(definition: ScenarioDefinition): Promise<ScenarioResu
     cpu: {
       userMs: cpu.user / 1_000,
       systemMs: cpu.system / 1_000,
+      utilizationFraction: ((cpu.user + cpu.system) / 1_000) / elapsedMs,
     },
   };
 }
