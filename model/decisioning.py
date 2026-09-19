@@ -131,8 +131,14 @@ def optimize_exact(
         candidate_id: rank
         for rank, candidate_id in enumerate(sorted(candidate.candidate_id for candidate in eligible))
     }
-    segment_exposure: dict[str, float] = {}
-    segment_heap: list[tuple[float, str]] = []
+    segments = sorted({candidate.segment for candidate in eligible})
+    segment_exposure: dict[str, float] = {segment: 0.0 for segment in segments}
+    segment_version: dict[str, int] = {segment: 0 for segment in segments}
+    segment_heap: list[tuple[float, str, int]] = [
+        (0.0, segment, 0)
+        for segment in segments
+    ]
+    heapq.heapify(segment_heap)
     selected_count = 0
     exposure = 0.0
     expected_loss = 0.0
@@ -144,12 +150,29 @@ def optimize_exact(
 
     def max_segment_exposure() -> float:
         while segment_heap:
-            negative_value, segment = segment_heap[0]
-            current = segment_exposure.get(segment, 0.0)
-            if -negative_value == current:
-                return current
+            negative_value, segment, version = segment_heap[0]
+            if segment_version[segment] == version:
+                return -negative_value
             heapq.heappop(segment_heap)
         return 0.0
+
+    def update_segment(segment: str, delta: float) -> None:
+        updated = segment_exposure[segment] + delta
+        if abs(updated) <= 1e-12:
+            updated = 0.0
+        segment_exposure[segment] = updated
+        version = segment_version[segment] + 1
+        segment_version[segment] = version
+        heapq.heappush(segment_heap, (-updated, segment, version))
+
+        # Lazy invalidation keeps O(log G) updates, while periodic rebuilds keep
+        # auxiliary heap storage bounded to O(G) rather than growing with 2^n.
+        if len(segment_heap) > max(8, 4 * len(segments)):
+            segment_heap[:] = [
+                (-segment_exposure[name], name, segment_version[name])
+                for name in segments
+            ]
+            heapq.heapify(segment_heap)
 
     # Gray-code enumeration flips exactly one candidate per subset. This keeps
     # exposure/loss/return/segment state incremental rather than rebuilding an
@@ -169,11 +192,7 @@ def optimize_exact(
             expected_return += sign * candidate.expected_return
             tie_mask ^= 1 << lex_rank[candidate.candidate_id]
 
-            updated_segment = segment_exposure.get(candidate.segment, 0.0) + sign * candidate.exposure
-            if abs(updated_segment) <= 1e-12:
-                updated_segment = 0.0
-            segment_exposure[candidate.segment] = updated_segment
-            heapq.heappush(segment_heap, (-updated_segment, candidate.segment))
+            update_segment(candidate.segment, sign * candidate.exposure)
             previous_gray = gray
 
         if selected_count < min_approval_count:
@@ -232,7 +251,7 @@ def optimize_exact(
             "budget": abs(final_exposure - budget) < 1e-10,
             "expectedLoss": max_expected_loss is not None and abs(metrics["expectedLoss"] - max_expected_loss) < 1e-10,
         },
-        "method": "bounded Gray-code exhaustive 0/1 search; O(2^n log G) with segment constraints",
+        "method": "bounded Gray-code exhaustive 0/1 search; amortized O(2^n log G), O(G) segment state",
     }
 
 
