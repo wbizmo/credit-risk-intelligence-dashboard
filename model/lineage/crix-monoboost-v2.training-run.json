@@ -24,7 +24,7 @@
   "evidence": [
     {
       "path": "MODEL_CARD.md",
-      "sha256": "4480ea021365d754ea3c3efc8df0150be6f346c3541ff2f0944fad66c1ff6104"
+      "sha256": "dac1bc523cf6bf5e65bfe0bf557e2db239188eb30135d4c16474feec2669c156"
     },
     {
       "path": "model/TRAINING_REPORT.md",
