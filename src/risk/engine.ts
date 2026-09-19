@@ -1,5 +1,19 @@
-import rawArtifact from "../../model/artifacts/crix-monoboost-v2.json";
-import { runtimeManifestMetadata, verifyRuntimeArtifactManifest } from "./registry";
+import { runtimeManifestMetadata } from "./registry";
+import {
+  emptyComplexityCounters,
+  evaluateBaselineWithCounters,
+  evaluateCompiledBaseline,
+  evaluateCompiledMargin,
+  evaluateMarginWithFeatureOverride,
+  evaluateOverrideWithCounters,
+  evaluateReferenceMargin,
+  getRuntimeModel,
+  runtimeArtifactForBenchmark,
+  verifyCompiledRuntimeModel,
+  type BaselineEvaluation,
+  type CompiledModel,
+  type ComplexityCounters,
+} from "./runtime";
 import type {
   ApplicationInput,
   Counterfactual,
@@ -11,47 +25,10 @@ import type {
   StressSeverity,
 } from "./types";
 
-interface ModelTree {
-  left: number[];
-  right: number[];
-  feature: number[];
-  threshold: number[];
-  defaultLeft: number[];
-}
-
-interface ModelArtifact {
-  schemaVersion: number;
-  name: string;
-  version: string;
-  trainedAt: string;
-  target: { name: string; definition: string; horizon: string };
-  featureNames: string[];
-  monotoneConstraints: number[];
-  baseScore: number;
-  calibration: { method: string; slope: number; intercept: number };
-  challenger: {
-    name: string;
-    intercept: number;
-    coefficients: number[];
-    means: number[];
-    scales: number[];
-  };
-  trees: ModelTree[];
-  metrics: Record<string, number>;
-  diagnostics: {
-    calibration: Array<{ predicted: number; observed: number; count: number }>;
-    roc: Array<{ fpr: number; tpr: number }>;
-    featureImportance: Array<{ feature: string; gain: number }>;
-  };
-  reference: Record<string, number>;
-  trainingBounds: Record<string, { p01: number; p99: number }>;
-  training: Record<string, unknown>;
-}
-
 interface ScoringContext {
   input: ApplicationInput;
   values: Record<string, number>;
-  vector: number[];
+  vector: readonly number[];
   loanToIncome: number;
 }
 
@@ -66,7 +43,7 @@ interface ExplanationEvaluation {
   upperBound: number;
 }
 
-const artifact = rawArtifact as ModelArtifact;
+const artifact = runtimeArtifactForBenchmark();
 
 const FEATURE_LABELS: Record<string, string> = {
   debtToIncome: "Debt-to-income ratio",
@@ -129,7 +106,7 @@ function assertFiniteInput(input: ApplicationInput): void {
   if (input.loanAmount <= 0) throw new RangeError("loanAmount must be greater than zero");
 }
 
-function createScoringContext(input: ApplicationInput): ScoringContext {
+function createScoringContext(input: ApplicationInput, model: CompiledModel): ScoringContext {
   assertFiniteInput(input);
   const loanToIncome = input.loanAmount / input.annualIncome;
   const values: Record<string, number> = {
@@ -147,7 +124,7 @@ function createScoringContext(input: ApplicationInput): ScoringContext {
     incomeStability: input.incomeStability,
     recentCreditGrowth: input.recentCreditGrowth,
   };
-  const vector = artifact.featureNames.map((name) => {
+  const vector = model.featureNames.map((name) => {
     const value = values[name];
     if (value === undefined) throw new Error(`Model artifact requests unknown feature: ${name}`);
     return value;
@@ -155,84 +132,47 @@ function createScoringContext(input: ApplicationInput): ScoringContext {
   return { input, values, vector, loanToIncome };
 }
 
-function rawChampionMargin(context: ScoringContext): number {
-  let margin = logit(artifact.baseScore);
-
-  for (const tree of artifact.trees) {
-    let node = 0;
-    let hops = 0;
-
-    while (true) {
-      if (hops++ > 64) throw new Error("Model artifact traversal limit exceeded");
-      const left = tree.left[node];
-      const right = tree.right[node];
-      const featureIndex = tree.feature[node];
-      const threshold = tree.threshold[node];
-      const defaultLeft = tree.defaultLeft[node];
-
-      if (left === undefined || right === undefined || featureIndex === undefined || threshold === undefined || defaultLeft === undefined) {
-        throw new Error("Model artifact contains an invalid tree node");
-      }
-      if (left === -1) {
-        if (!Number.isFinite(threshold)) throw new Error("Model artifact contains a non-finite leaf");
-        margin += threshold;
-        break;
-      }
-
-      const value = context.vector[featureIndex];
-      if (value === undefined) throw new Error("Model artifact feature index is out of range");
-      const goLeft = Number.isNaN(value) ? Boolean(defaultLeft) : value < threshold;
-      node = goLeft ? left : right;
-      if (node < 0) throw new Error("Model artifact points to an invalid child node");
-    }
-  }
-
-  if (!Number.isFinite(margin)) throw new Error("Model produced a non-finite margin");
-  return margin;
-}
-
-function championProbability(context: ScoringContext): number {
-  const margin = rawChampionMargin(context);
-  const calibrated = sigmoid(artifact.calibration.slope * margin + artifact.calibration.intercept);
+function calibratedProbability(model: CompiledModel, margin: number): number {
+  const calibrated = sigmoid(model.calibrationSlope * margin + model.calibrationIntercept);
   return clamp(calibrated, 0.0001, 0.9999);
 }
 
-export function predictDefaultProbability(input: ApplicationInput): number {
-  return championProbability(createScoringContext(input));
+function championProbability(context: ScoringContext, model: CompiledModel): number {
+  return calibratedProbability(model, evaluateCompiledMargin(model, context.vector));
 }
 
-function challengerProbability(context: ScoringContext): number {
-  const challenger = artifact.challenger;
-  if (
-    challenger.coefficients.length !== context.vector.length ||
-    challenger.means.length !== context.vector.length ||
-    challenger.scales.length !== context.vector.length
-  ) throw new Error("Challenger artifact dimensions do not match champion feature contract");
+export function predictDefaultProbability(input: ApplicationInput): number {
+  const model = getRuntimeModel();
+  return championProbability(createScoringContext(input, model), model);
+}
 
-  let margin = challenger.intercept;
+function challengerProbability(
+  context: ScoringContext,
+  model: CompiledModel,
+  counters?: ComplexityCounters,
+): number {
+  let margin = model.challengerIntercept;
   for (let index = 0; index < context.vector.length; index += 1) {
-    const scale = challenger.scales[index];
-    const mean = challenger.means[index];
-    const coefficient = challenger.coefficients[index];
-    if (scale === undefined || mean === undefined || coefficient === undefined || !Number.isFinite(scale) || scale <= 0) {
-      throw new Error("Challenger artifact contains an invalid standardization parameter");
-    }
-    margin += coefficient * ((context.vector[index]! - mean) / scale);
+    if (counters) counters.challengerFeatureOps += 1;
+    margin += model.challengerCoefficients[index]!
+      * ((context.vector[index]! - model.challengerMeans[index]!) / model.challengerScales[index]!);
   }
   return clamp(sigmoid(margin), 0.0001, 0.9999);
 }
 
 export function predictChallengerProbability(input: ApplicationInput): number {
-  return challengerProbability(createScoringContext(input));
+  const model = getRuntimeModel();
+  return challengerProbability(createScoringContext(input, model), model);
 }
 
-function outOfDistributionSignals(context: ScoringContext): string[] {
-  return artifact.featureNames.filter((feature) => {
-    const bound = artifact.trainingBounds[feature];
-    const value = context.values[feature];
-    if (!bound || value === undefined) return true;
-    return value < bound.p01 || value > bound.p99;
-  });
+function outOfDistributionSignals(context: ScoringContext, model: CompiledModel): string[] {
+  const signals: string[] = [];
+  for (let index = 0; index < model.featureNames.length; index += 1) {
+    const feature = model.featureNames[index]!;
+    const value = context.vector[index]!;
+    if (value < model.lowerBounds[index]! || value > model.upperBounds[index]!) signals.push(feature);
+  }
+  return signals;
 }
 
 function withFeatureValue(input: ApplicationInput, feature: string, value: number): ApplicationInput {
@@ -256,14 +196,33 @@ function withFeatureValue(input: ApplicationInput, feature: string, value: numbe
   return candidate;
 }
 
-function explanationEvaluations(context: ScoringContext, pd: number): ExplanationEvaluation[] {
-  return artifact.featureNames.map((feature) => {
-    const reference = artifact.reference[feature];
-    const current = context.values[feature];
-    const bounds = artifact.trainingBounds[feature];
-    if (reference === undefined || current === undefined || !bounds) throw new Error(`Missing explanation metadata for feature: ${feature}`);
-    const target = clamp(reference, bounds.p01, bounds.p99);
-    const counterfactualPd = championProbability(createScoringContext(withFeatureValue(context.input, feature, target)));
+function referenceProbability(input: ApplicationInput, model: CompiledModel): number {
+  const context = createScoringContext(input, model);
+  return calibratedProbability(model, evaluateReferenceMargin(artifact, context.vector));
+}
+
+function explanationEvaluations(
+  context: ScoringContext,
+  pd: number,
+  model: CompiledModel,
+  baseline: BaselineEvaluation,
+  mode: "sparse" | "reference",
+  counters?: ComplexityCounters,
+): ExplanationEvaluation[] {
+  return model.featureNames.map((feature, featureIndex) => {
+    const current = context.vector[featureIndex]!;
+    const target = clamp(model.reference[featureIndex]!, model.lowerBounds[featureIndex]!, model.upperBounds[featureIndex]!);
+    let counterfactualPd: number;
+
+    if (mode === "reference") {
+      counterfactualPd = referenceProbability(withFeatureValue(context.input, feature, target), model);
+    } else {
+      const margin = counters
+        ? evaluateOverrideWithCounters(model, baseline, context.vector, featureIndex, target, counters)
+        : evaluateMarginWithFeatureOverride(model, baseline, context.vector, featureIndex, target);
+      counterfactualPd = calibratedProbability(model, margin);
+    }
+
     return {
       feature,
       label: FEATURE_LABELS[feature] ?? feature,
@@ -271,8 +230,8 @@ function explanationEvaluations(context: ScoringContext, pd: number): Explanatio
       reference: target,
       counterfactualPd,
       impact: pd - counterfactualPd,
-      lowerBound: bounds.p01,
-      upperBound: bounds.p99,
+      lowerBound: model.lowerBounds[featureIndex]!,
+      upperBound: model.upperBounds[featureIndex]!,
     };
   });
 }
@@ -340,12 +299,24 @@ function policyEvaluation(pd: number, context: ScoringContext, confidence: numbe
   return review.length > 0 ? { decision: "REVIEW", reasons: review } : { decision: "APPROVE", reasons: [] };
 }
 
-export function assessRisk(input: ApplicationInput): RiskResult {
-  const context = createScoringContext(input);
-  const pd = championProbability(context);
-  const challengerPd = challengerProbability(context);
+function assessRiskInternal(
+  input: ApplicationInput,
+  mode: "sparse" | "reference",
+  counters?: ComplexityCounters,
+): RiskResult {
+  const model = getRuntimeModel();
+  const context = createScoringContext(input, model);
+  const baseline = mode === "reference"
+    ? { margin: 0, treeContributions: [] }
+    : counters
+      ? evaluateBaselineWithCounters(model, context.vector, counters)
+      : evaluateCompiledBaseline(model, context.vector);
+  const pd = mode === "reference"
+    ? calibratedProbability(model, evaluateReferenceMargin(artifact, context.vector))
+    : calibratedProbability(model, baseline.margin);
+  const challengerPd = challengerProbability(context, model, counters);
   const disagreement = Math.abs(pd - challengerPd);
-  const outOfDistribution = outOfDistributionSignals(context);
+  const outOfDistribution = outOfDistributionSignals(context, model);
   const confidence = clamp(0.96 - disagreement * 1.9 - outOfDistribution.length * 0.12, 0.35, 0.98);
   const lgd = clamp(0.34 + 0.17 * context.loanToIncome + 0.11 * (1 - input.incomeStability) + 0.08 * (input.cashBufferMonths < 1 ? 1 : 0), 0.25, 0.82);
   const ead = input.loanAmount;
@@ -357,7 +328,7 @@ export function assessRisk(input: ApplicationInput): RiskResult {
   if (disagreement >= 0.08) flags.push("MODEL_DISAGREEMENT");
   if (outOfDistribution.length > 0) flags.push("OUT_OF_DISTRIBUTION");
   if (confidence < POLICY.review.confidence) flags.push("LOW_CONFIDENCE");
-  const explanations = explanationEvaluations(context, pd);
+  const explanations = explanationEvaluations(context, pd, model, baseline, mode, counters);
 
   return {
     pd,
@@ -381,6 +352,19 @@ export function assessRisk(input: ApplicationInput): RiskResult {
     outOfDistribution,
     flags,
   };
+}
+
+export function assessRisk(input: ApplicationInput): RiskResult {
+  return assessRiskInternal(input, "sparse");
+}
+
+export function assessRiskReferenceForTest(input: ApplicationInput): RiskResult {
+  return assessRiskInternal(input, "reference");
+}
+
+export function assessRiskWithComplexity(input: ApplicationInput): { result: RiskResult; complexity: ComplexityCounters } {
+  const complexity = emptyComplexityCounters();
+  return { result: assessRiskInternal(input, "sparse", complexity), complexity };
 }
 
 export function stressApplication(input: ApplicationInput, severity: StressSeverity): StressResult {
@@ -414,6 +398,7 @@ export function stressApplication(input: ApplicationInput, severity: StressSever
 }
 
 export function modelMetadata() {
+  const model = getRuntimeModel();
   return {
     name: artifact.name,
     version: artifact.version,
@@ -427,41 +412,69 @@ export function modelMetadata() {
     diagnostics: artifact.diagnostics,
     trainingBounds: artifact.trainingBounds,
     training: { ...artifact.training, registry: runtimeManifestMetadata() },
-    treeCount: artifact.trees.length,
+    treeCount: model.trees.length,
     policy: POLICY,
     sensitivity: { method: SENSITIVITY.method, version: SENSITIVITY.version },
   };
 }
 
 export function verifyModelIntegrity(): boolean {
-  if (!verifyRuntimeArtifactManifest()) return false;
-  if (artifact.schemaVersion !== 2 || !artifact.name || !artifact.version || artifact.trees.length === 0) return false;
-  if (artifact.featureNames.length !== artifact.monotoneConstraints.length) return false;
-  if (!Number.isFinite(artifact.calibration.slope) || !Number.isFinite(artifact.calibration.intercept)) return false;
-  if (artifact.challenger.coefficients.length !== artifact.featureNames.length) return false;
-  for (const feature of artifact.featureNames) {
-    const bounds = artifact.trainingBounds[feature];
-    const reference = artifact.reference[feature];
-    if (!bounds || reference === undefined || !Number.isFinite(bounds.p01) || !Number.isFinite(bounds.p99) || !Number.isFinite(reference)) return false;
-    if (bounds.p01 > bounds.p99 || reference < bounds.p01 || reference > bounds.p99) return false;
+  if (!verifyCompiledRuntimeModel()) return false;
+  try {
+    const model = getRuntimeModel();
+    if (model.featureNames.length !== artifact.monotoneConstraints.length) return false;
+    const sentinel: ApplicationInput = {
+      annualIncome: 85_000,
+      debtToIncome: 0.28,
+      creditScore: 720,
+      creditUtilization: 0.3,
+      delinquencies24m: 0,
+      inquiries6m: 1,
+      oldestTradeMonths: 96,
+      openAccounts: 7,
+      loanAmount: 24_000,
+      termMonths: 36,
+      employmentYears: 5,
+      cashBufferMonths: 3,
+      onTimePaymentRate: 0.98,
+      incomeStability: 0.82,
+      recentCreditGrowth: 0.08,
+    };
+    const result = assessRisk(sentinel);
+    return Number.isFinite(result.pd) && result.pd > 0 && result.pd < 1 && Number.isFinite(result.expectedLoss);
+  } catch {
+    return false;
   }
-  const sentinel: ApplicationInput = {
-    annualIncome: 85_000,
-    debtToIncome: 0.28,
-    creditScore: 720,
-    creditUtilization: 0.3,
-    delinquencies24m: 0,
-    inquiries6m: 1,
-    oldestTradeMonths: 96,
-    openAccounts: 7,
-    loanAmount: 24_000,
-    termMonths: 36,
-    employmentYears: 5,
-    cashBufferMonths: 3,
-    onTimePaymentRate: 0.98,
-    incomeStability: 0.82,
-    recentCreditGrowth: 0.08,
-  };
-  const result = assessRisk(sentinel);
-  return Number.isFinite(result.pd) && result.pd > 0 && result.pd < 1 && Number.isFinite(result.expectedLoss);
+}
+
+export function benchmarkChampionProbability(input: ApplicationInput): number {
+  return predictDefaultProbability(input);
+}
+
+export function benchmarkChallengerProbability(input: ApplicationInput): number {
+  return predictChallengerProbability(input);
+}
+
+export function benchmarkReferenceProbability(input: ApplicationInput): number {
+  const model = getRuntimeModel();
+  const context = createScoringContext(input, model);
+  return clamp(sigmoid(artifact.calibration.slope * evaluateReferenceMargin(artifact, context.vector) + artifact.calibration.intercept), 0.0001, 0.9999);
+}
+
+export function benchmarkTreeDensity() {
+  const model = getRuntimeModel();
+  return model.featureNames.map((feature, index) => ({
+    feature,
+    trees: model.treesByFeature[index]!.length,
+    totalTrees: model.trees.length,
+  }));
+}
+
+export function benchmarkExpectedFullExplanationTreeVisits(): number {
+  const model = getRuntimeModel();
+  return model.featureNames.length * model.trees.length;
+}
+
+export function benchmarkBaseMargin(): number {
+  return logit(artifact.baseScore);
 }

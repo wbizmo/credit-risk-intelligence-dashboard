@@ -53,7 +53,15 @@ interface RequestErrorShape {
   message?: string;
 }
 
-export async function buildApp(config: AppConfig = loadConfig()) {
+export interface AppBuildOptions {
+  verifyModel?: () => boolean;
+  routeRateLimitScale?: number;
+}
+
+export async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
+  const routeRateLimitScale = Math.max(1, Math.min(1_000, Math.floor(options.routeRateLimitScale ?? 1)));
+  const routeLimit = (max: number): number => max * routeRateLimitScale;
+
   const app = Fastify({
     logger: config.environment === "test" ? false : {
       level: config.logLevel,
@@ -73,6 +81,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     timeWindow: "1 minute",
     keyGenerator: (request) => request.ip,
     errorResponseBuilder: (request) => ({
+      statusCode: 429,
       error: "RATE_LIMITED",
       message: "Too many requests. Retry after the current rate-limit window.",
       requestId: request.id,
@@ -123,7 +132,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     }),
   });
 
-  const modelReady = verifyModelIntegrity();
+  const modelReady = (options.verifyModel ?? verifyModelIntegrity)();
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
@@ -179,7 +188,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   }));
 
   app.get("/health", {
-    config: { rateLimit: { max: 600, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(600), timeWindow: "1 minute" } },
     schema: { tags: ["System"], summary: "Liveness probe", response: { 200: healthResponseSchema } },
   }, async () => ({
     status: "ok",
@@ -190,7 +199,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   }));
 
   app.get("/ready", {
-    config: { rateLimit: { max: 600, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(600), timeWindow: "1 minute" } },
     schema: { tags: ["System"], summary: "Readiness probe", response: { 200: readyResponseSchema, 503: readyResponseSchema } },
   }, async (_request, reply) => {
     if (!modelReady) return reply.code(503).send({ status: "not-ready", modelLoaded: false, version: API_VERSION });
@@ -214,7 +223,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...modelMetadata() }));
 
   app.post<{ Body: ApplicationInput }>(`${API_MAJOR_PATH}/risk/score`, {
-    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(60), timeWindow: "1 minute" } },
     schema: {
       tags: ["Risk"],
       summary: "Score a single credit application",
@@ -225,7 +234,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, result: assessRisk(request.body) }));
 
   app.post<{ Body: { application: ApplicationInput; severity: StressSeverity } }>(`${API_MAJOR_PATH}/risk/stress`, {
-    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(30), timeWindow: "1 minute" } },
     schema: {
       tags: ["Risk"],
       summary: "Stress-test an application",
@@ -236,7 +245,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...stressApplication(request.body.application, request.body.severity) }));
 
   app.post<{ Body: { applications: ApplicationInput[] } }>(`${API_MAJOR_PATH}/risk/batch`, {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(10), timeWindow: "1 minute" } },
     schema: {
       tags: ["Risk"],
       summary: "Score a bounded batch",

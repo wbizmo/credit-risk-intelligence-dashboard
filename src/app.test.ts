@@ -43,6 +43,14 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
+  it("reports not-ready when compiled model initialization fails", async () => {
+    const app = await buildApp(config(), { verifyModel: () => false });
+    const ready = await app.inject({ method: "GET", url: "/ready" });
+    expect(ready.statusCode).toBe(503);
+    expect(ready.json()).toMatchObject({ status: "not-ready", modelLoaded: false });
+    await app.close();
+  });
+
   it("publishes non-cacheable valid OpenAPI through public, legacy and canonical Swagger endpoints", async () => {
     const app = await buildApp(config());
 
@@ -160,4 +168,25 @@ describe("CRIX HTTP API", () => {
     expect(response.statusCode).toBe(400);
     await app.close();
   });
+
+  it("returns bounded 429 responses when the score route limit is exceeded", async () => {
+    const app = await buildApp(config());
+    let response;
+
+    for (let index = 0; index < 61; index += 1) {
+      response = await app.inject({
+        method: "POST",
+        url: "/api/v3/risk/score",
+        payload: application,
+      });
+    }
+
+    expect(response?.statusCode).toBe(429);
+    expect(response?.json()).toMatchObject({
+      error: "RATE_LIMITED",
+      message: "Too many requests.",
+    });
+    await app.close();
+  });
+
 });

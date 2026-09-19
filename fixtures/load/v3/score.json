@@ -1,0 +1,18 @@
+{
+  "applicationId": "load-v3-score-001",
+  "annualIncome": 85000,
+  "debtToIncome": 0.28,
+  "creditScore": 720,
+  "creditUtilization": 0.3,
+  "delinquencies24m": 0,
+  "inquiries6m": 1,
+  "oldestTradeMonths": 96,
+  "openAccounts": 7,
+  "loanAmount": 24000,
+  "termMonths": 36,
+  "employmentYears": 5,
+  "cashBufferMonths": 3,
+  "onTimePaymentRate": 0.98,
+  "incomeStability": 0.82,
+  "recentCreditGrowth": 0.08
+}

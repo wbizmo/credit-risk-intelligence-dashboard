@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { assessRisk, predictDefaultProbability, stressApplication, verifyModelIntegrity } from "./engine";
+import {
+  assessRisk,
+  assessRiskReferenceForTest,
+  assessRiskWithComplexity,
+  benchmarkExpectedFullExplanationTreeVisits,
+  benchmarkTreeDensity,
+  predictDefaultProbability,
+  stressApplication,
+  verifyModelIntegrity,
+} from "./engine";
 import type { ApplicationInput } from "./types";
 
 const baseline: ApplicationInput = {
@@ -131,4 +140,99 @@ describe("CRIX risk engine", () => {
     expect(result.outOfDistribution).toContain("creditScore");
     expect(result.flags).toContain("OUT_OF_DISTRIBUTION");
   });
+
+  it("preserves the complete precompiled scoring contract across a deterministic corpus", () => {
+    for (let index = 0; index < 120; index += 1) {
+      const input: ApplicationInput = {
+        ...baseline,
+        debtToIncome: 0.08 + ((index * 17) % 60) / 100,
+        creditScore: 575 + ((index * 19) % 230),
+        loanAmount: 8_000 + ((index * 3_700) % 48_000),
+        employmentYears: 0.5 + ((index * 7) % 20) / 2,
+      };
+      const compiled = assessRisk(input);
+      const reference = assessRiskReferenceForTest(input);
+
+      expect(compiled.pd).toBeCloseTo(reference.pd, 14);
+      expect(compiled.challengerPd).toBeCloseTo(reference.challengerPd, 14);
+      expect(compiled.confidence).toBeCloseTo(reference.confidence, 14);
+      expect(compiled.grade).toBe(reference.grade);
+      expect(compiled.score).toBe(reference.score);
+      expect(compiled.decision).toBe(reference.decision);
+      expect(compiled.policyReasons).toEqual(reference.policyReasons);
+      expect(compiled.flags).toEqual(reference.flags);
+      expect(compiled.outOfDistribution).toEqual(reference.outOfDistribution);
+      expect(compiled.reasons.map((item) => item.feature)).toEqual(reference.reasons.map((item) => item.feature));
+      expect(compiled.counterfactuals.map((item) => item.feature)).toEqual(reference.counterfactuals.map((item) => item.feature));
+
+      for (let reasonIndex = 0; reasonIndex < compiled.reasons.length; reasonIndex += 1) {
+        expect(compiled.reasons[reasonIndex]!.impact).toBeCloseTo(reference.reasons[reasonIndex]!.impact, 12);
+      }
+      for (let counterfactualIndex = 0; counterfactualIndex < compiled.counterfactuals.length; counterfactualIndex += 1) {
+        expect(compiled.counterfactuals[counterfactualIndex]!.pdAfter)
+          .toBeCloseTo(reference.counterfactuals[counterfactualIndex]!.pdAfter, 12);
+      }
+    }
+  });
+
+  it("preserves loan-to-income counterfactual semantics through loanAmount perturbation", () => {
+    const input: ApplicationInput = { ...baseline, loanAmount: 50_000 };
+    const originalLoanAmount = input.loanAmount;
+    const compiled = assessRisk(input);
+    const reference = assessRiskReferenceForTest(input);
+    const compiledLoanToIncome = compiled.counterfactuals.find((item) => item.feature === "loanToIncome");
+    const referenceLoanToIncome = reference.counterfactuals.find((item) => item.feature === "loanToIncome");
+
+    expect(compiledLoanToIncome).toBeDefined();
+    expect(referenceLoanToIncome).toBeDefined();
+    expect(compiledLoanToIncome?.to).toBeCloseTo(referenceLoanToIncome!.to, 14);
+    expect(compiledLoanToIncome?.pdAfter).toBeCloseTo(referenceLoanToIncome!.pdAfter, 12);
+    expect(input.loanAmount).toBe(originalLoanAmount);
+  });
+
+  it("uses tree-sparse explanation traversal for the deployed model", () => {
+    const { complexity } = assessRiskWithComplexity(baseline);
+    const density = benchmarkTreeDensity();
+    const expectedSparseVisits = density.reduce((sum, item) => sum + item.trees, 0);
+
+    expect(complexity.explanationTreeVisits).toBe(expectedSparseVisits);
+    expect(complexity.explanationTreeVisits).toBeLessThan(benchmarkExpectedFullExplanationTreeVisits());
+    expect(complexity.championTreeVisits).toBe(density[0]!.totalTrees);
+  });
+
+  it("creates fresh complexity counters without changing scoring outputs", () => {
+    const ordinary = assessRisk(baseline);
+    const first = assessRiskWithComplexity(baseline);
+    const second = assessRiskWithComplexity(baseline);
+
+    expect(first.result).toEqual(ordinary);
+    expect(second.result).toEqual(ordinary);
+    expect(second.complexity).toEqual(first.complexity);
+  });
+
+  it("keeps diagnostic work linear across 1/10/25/50-item batch equivalents", () => {
+    const counts = [1, 10, 25, 50];
+    const one = assessRiskWithComplexity(baseline).complexity;
+
+    for (const count of counts) {
+      let championTreeVisits = 0;
+      let explanationTreeVisits = 0;
+      let challengerFeatureOps = 0;
+
+      for (let index = 0; index < count; index += 1) {
+        const { complexity } = assessRiskWithComplexity({
+          ...baseline,
+          debtToIncome: baseline.debtToIncome + index / 10_000,
+        });
+        championTreeVisits += complexity.championTreeVisits;
+        explanationTreeVisits += complexity.explanationTreeVisits;
+        challengerFeatureOps += complexity.challengerFeatureOps;
+      }
+
+      expect(championTreeVisits).toBe(one.championTreeVisits * count);
+      expect(explanationTreeVisits).toBe(one.explanationTreeVisits * count);
+      expect(challengerFeatureOps).toBe(one.challengerFeatureOps * count);
+    }
+  });
+
 });
