@@ -53,7 +53,7 @@ interface RequestErrorShape {
   message?: string;
 }
 
-export async function buildApp(config: AppConfig = loadConfig()) {
+export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
   const app = Fastify({
     logger: config.environment === "test" ? false : {
       level: config.logLevel,
@@ -123,7 +123,7 @@ export async function buildApp(config: AppConfig = loadConfig()) {
     }),
   });
 
-  const modelReady = verifyModelIntegrity();
+  const modelReady = (options.verifyModel ?? verifyModelIntegrity)();
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
