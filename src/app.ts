@@ -99,6 +99,12 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     }),
   });
 
+  const supplementaryIpLimit = app.createRateLimit({
+    max: Math.max(2, Math.floor(config.rateLimitMax * routeRateLimitScale)),
+    timeWindow: "1 minute",
+    keyGenerator: (request) => `supplementary-ip:${request.ip}`,
+  });
+
   if (config.corsOrigins.length > 0) {
     await app.register(cors, {
       origin: config.corsOrigins,
@@ -170,18 +176,29 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
         requestId: request.id,
       });
     }
+
+    const ipLimit = await supplementaryIpLimit(request);
+    if (!ipLimit.isAllowed && ipLimit.isExceeded) {
+      return reply.code(429).send({
+        error: "RATE_LIMITED",
+        message: "Too many requests.",
+        requestId: request.id,
+      });
+    }
   });
 
   app.addHook("onResponse", async (request, reply) => {
     if (!telemetry.enabled) return;
     const startedAt = requestStarts.get(request);
     if (startedAt === undefined) return;
+    const route = request.routeOptions.url ?? "unmatched";
     telemetry.recordHttp(
       request.method,
-      request.routeOptions.url ?? "unmatched",
+      route,
       reply.statusCode,
       performance.now() - startedAt,
     );
+    if (reply.statusCode === 429) telemetry.recordRateLimitRejection(route);
     requestStarts.delete(request);
   });
 
@@ -345,7 +362,6 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     }
 
     if (requestError.statusCode === 429) {
-      telemetry.recordRateLimitRejection(request.routeOptions.url ?? "unmatched");
       return reply.code(429).send({ error: "RATE_LIMITED", message: "Too many requests.", requestId: request.id });
     }
 
