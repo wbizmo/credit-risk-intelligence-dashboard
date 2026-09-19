@@ -12,8 +12,11 @@ Fastify API
   |-- health/readiness
   |-- OpenAPI/Swagger
   |-- strict schema validation
-  |-- rate limiting
-  |-- optional API-key auth
+  |-- key-aware + supplementary-IP rate limiting
+  |-- explicit public-demo / required auth posture
+  |-- bounded current+next API-key rotation
+  |-- explicit reverse-proxy hop trust
+  |-- optional privacy-bounded OpenTelemetry metrics
   |-- request/error controls
   |
   v
@@ -134,8 +137,9 @@ This avoids training one blurred default concept across personal loans, cards, H
 
 1. Fastify assigns an opaque UUID request ID.
 2. Global request/body/time limits apply.
-3. Optional API-key authentication runs for `/api/v3/*`.
-4. AJV validates the strict v3 request body, including `creditScore`.
+3. In hardened mode, bounded constant-time API-key authentication runs for `/api/v3/*`; public-demo mode remains explicitly unauthenticated.
+4. Key-aware rate limits and a supplementary trusted-client-IP quota constrain abuse without emitting credential/IP labels.
+5. AJV validates the strict v3 request body, including `creditScore`.
 5. The engine performs finite-number checks as a second trust boundary.
 6. One request-local scoring context derives loan-to-income and the champion feature vector once.
 7. The monotonic boosted champion produces a raw margin from that context.
@@ -187,13 +191,15 @@ German credit datasets are evaluated only on their defensible structural overlap
 
 `/ready` reflects startup model-integrity validation. The server verifies artifact structure, champion/challenger dimensions, calibration finiteness, training bounds/reference consistency and performs a sentinel score before advertising readiness. With no external stateful runtime dependency, the primary model artifact is the principal readiness dependency.
 
-## Security model
+## Security and observability model
 
-The public demo defaults to no API key so reviewers can exercise Swagger. A deployment can set `CRIX_API_KEY` to protect `/api/v3/*`; health/readiness/docs remain public.
+The public demo uses explicit `CRIX_AUTH_MODE=public-demo`. Hardened deployments use `CRIX_AUTH_MODE=required`, which fails closed without a strong key and supports at most a current+next rotation pair. Health/readiness/docs remain public. Reverse-proxy trust is off by default and only a bounded configured hop count can influence `request.ip`.
 
-Controls include body limits, rate limits, strict schemas, CORS allow-listing, Helmet, sensitive-header log redaction, constant-time API-key comparison, sanitized errors, batch bounds, finite-value guards, bounded model traversal and bounded explanation work.
+Controls include body limits, key-aware and supplementary-IP rate limits, strict schemas, CORS allow-listing, Helmet, credential-header log redaction, fixed-length constant-time credential comparison, sanitized errors, batch bounds, finite-value guards, bounded model traversal and bounded explanation work.
 
-Model-governance reports contain aggregate metrics only. The public demo must not receive real consumer credit data.
+Optional OpenTelemetry instrumentation exports aggregate low-cardinality metrics only. It records route templates/status classes, bounded model/policy/decision/OOD labels and runtime health indicators; it does not record application/request IDs, raw IPs, headers, credentials, borrower feature values or exact PDs. Export runs outside the scoring path and exporter failure does not determine score success.
+
+Model-governance reports and observability remain aggregate-only. The public demo must not receive real consumer credit data.
 
 ## Scaling path
 
