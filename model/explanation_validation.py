@@ -92,11 +92,23 @@ def _local_sensitivity(
     return baseline_pd, impacts
 
 
+_VALID_FEATURE_BOUNDS = {
+    "debtToIncome": (0.0, 2.0),
+    "loanToIncome": (0.001, 3.0),
+    "creditScore": (300.0, 850.0),
+    "employmentYears": (0.0, 10.0),
+}
+
+
 def _small_valid_perturbation(
     X: np.ndarray,
-    lower: np.ndarray,
-    upper: np.ndarray,
+    feature_names: Sequence[str],
 ) -> np.ndarray:
+    try:
+        lower = np.asarray([_VALID_FEATURE_BOUNDS[name][0] for name in feature_names], dtype=np.float32)
+        upper = np.asarray([_VALID_FEATURE_BOUNDS[name][1] for name in feature_names], dtype=np.float32)
+    except KeyError as exc:
+        raise ValueError(f"no governed perturbation bounds for feature: {exc.args[0]}") from exc
     width = np.maximum(upper - lower, 1e-9)
     direction = np.where(np.arange(X.shape[1]) % 2 == 0, 1.0, -1.0)
     delta = width * 0.01 * direction
@@ -267,7 +279,7 @@ def build_explanation_fidelity_report(
         sample,
         reference=reference_vector,
     )
-    perturbed = _small_valid_perturbation(sample, lower, upper)
+    perturbed = _small_valid_perturbation(sample, feature_names)
     _, perturbed_local = _local_sensitivity(
         model,
         calibrator,
