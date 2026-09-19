@@ -343,16 +343,28 @@ def main() -> None:
         bootstrap_samples=100,
         min_segment_count=500,
     )
+    shift_population = np.vstack((X_cal, X_test))
+    shift_dates = np.concatenate((calibration["issueDate"].to_numpy(), test["issueDate"].to_numpy()))
+    calibration_segments = fixed_segments(calibration)
+    test_segments = fixed_segments(test)
+    shift_segments = {
+        name: np.concatenate((calibration_segments[name], test_segments[name]))
+        for name in calibration_segments
+    }
     governance["distributionShift"] = build_distribution_shift_evidence(
         X_train,
-        X_test,
+        shift_population,
         feature_names=FEATURES,
         expected_dates=train["issueDate"].to_numpy(),
-        actual_dates=test["issueDate"].to_numpy(),
+        actual_dates=shift_dates,
         expected_segments=fixed_segments(train),
-        actual_segments=fixed_segments(test),
+        actual_segments=shift_segments,
         seed=SEED,
     )
+    governance["distributionShift"]["populations"] = {
+        "reference": "chronological training cohort",
+        "comparison": "later calibration + out-of-time cohorts",
+    }
 
     explanation_fidelity = build_explanation_fidelity_report(
         champion,
@@ -383,6 +395,10 @@ def main() -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "crix-explanation-validation-v1.json").write_text(
         json.dumps(explanation_fidelity, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (artifact_dir / "crix-distribution-shift-v1.json").write_text(
+        json.dumps(governance["distributionShift"], indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     artifact_path = artifact_dir / "crix-monoboost-v2.json"
