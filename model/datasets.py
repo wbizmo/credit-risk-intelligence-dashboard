@@ -11,6 +11,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from data_contracts import (
+    PRIMARY_HARMONIZED_CONTRACT_VERSION,
+    PRIMARY_SOURCE_CONTRACT_VERSION,
+    validate_primary_harmonized,
+    validate_primary_source,
+)
+from governance import PRIMARY_FEATURE_PROVENANCE
+
 LENDINGCLUB_URLS = [
     "https://zenodo.org/records/11295916/files/LC_loans_granting_model_dataset.csv?download=1",
     "https://zenodo.org/api/records/11295916/files/LC_loans_granting_model_dataset.csv/content",
@@ -175,10 +183,15 @@ def harmonize_lendingclub(path: Path) -> HarmonizedDataset:
     required = ["issue_d", "revenue", "dti_n", "loan_amnt", "fico_n", "emp_length", "Default"]
     raw = pd.read_csv(path, usecols=required, low_memory=False)
     source_rows = len(raw)
+    validate_primary_source(raw)
 
+    issue_date = _parse_issue_dates(raw["issue_d"])
     frame = pd.DataFrame(
         {
-            "issueDate": _parse_issue_dates(raw["issue_d"]),
+            "sourceRowId": raw.index.to_numpy(dtype=np.int64),
+            "issueDate": issue_date,
+            "featureAsOf": issue_date,
+
             "annualIncome": pd.to_numeric(raw["revenue"], errors="coerce"),
             "debtToIncome": pd.to_numeric(raw["dti_n"], errors="coerce"),
             "loanAmount": pd.to_numeric(raw["loan_amnt"], errors="coerce"),
@@ -208,6 +221,11 @@ def harmonize_lendingclub(path: Path) -> HarmonizedDataset:
 
     frame["target"] = frame["target"].astype(np.int8)
     frame = frame.sort_values(["issueDate"], kind="stable").reset_index(drop=True)
+    validate_primary_harmonized(
+        frame,
+        provenance=PRIMARY_FEATURE_PROVENANCE,
+        required_features=FEATURES,
+    )
     return HarmonizedDataset(
         frame=frame,
         source_rows=source_rows,
