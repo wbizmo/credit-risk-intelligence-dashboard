@@ -11,6 +11,7 @@ import pandas as pd
 from data_contracts import (
     ContractViolation,
     validate_chronological_splits,
+    validate_external_dataset,
     validate_primary_harmonized,
     validate_primary_source,
 )
@@ -119,6 +120,31 @@ class DataContractTests(unittest.TestCase):
                 _harmonized_fixture(),
                 provenance=bad,
                 required_features=[item.feature for item in PRIMARY_FEATURE_PROVENANCE],
+            )
+
+    def test_external_contracts_bind_product_specific_source_semantics(self) -> None:
+        taiwan = pd.DataFrame(
+            {
+                "creditUtilization6mMean": np.zeros(30_000),
+                "onTimePaymentRate6m": np.ones(30_000),
+                "paymentDelayMonths6m": np.zeros(30_000),
+                "recentCreditGrowth6m": np.zeros(30_000),
+            }
+        )
+        target = np.zeros(30_000, dtype=np.int8)
+        evidence = validate_external_dataset(
+            "uci-taiwan-credit-card-default",
+            taiwan,
+            target,
+            source_features=list(taiwan.columns),
+        )
+        self.assertEqual(evidence["product"], "revolving-credit-card")
+        with self.assertRaisesRegex(ContractViolation, "product-specific-source-feature-contract"):
+            validate_external_dataset(
+                "uci-taiwan-credit-card-default",
+                taiwan,
+                target,
+                source_features=["wrong", "feature", "contract", "set"],
             )
 
     def test_chronological_split_rejects_overlap(self) -> None:
@@ -271,9 +297,13 @@ class LineageTests(unittest.TestCase):
     def test_artifact_report_and_prior_manifest_tampering_fail(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            first_manifest, _ = self._fixture(root)
             previous = root / "previous.json"
-            previous.write_text('{"approved":true}\n')
+            first_manifest.replace(previous)
             manifest_path, dataset = self._fixture(root, previous=previous)
+
+            verified = verify_training_manifest(manifest_path, root=root, dataset_path=dataset)
+            self.assertEqual(verified["manifestChainDepth"], 1)
 
             (root / "artifact.json").write_text('{"model":"tampered"}\n')
             with self.assertRaisesRegex(LineageViolation, "artifact hash"):
@@ -288,10 +318,11 @@ class LineageTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            first_manifest, _ = self._fixture(root)
             previous = root / "previous.json"
-            previous.write_text('{"approved":true}\n')
+            first_manifest.replace(previous)
             manifest_path, dataset = self._fixture(root, previous=previous)
-            previous.write_text('{"approved":false}\n')
+            previous.write_text('{"schemaVersion":1,"tampered":true}\n')
             with self.assertRaisesRegex(LineageViolation, "hash-chain"):
                 verify_training_manifest(manifest_path, root=root, dataset_path=dataset)
 
