@@ -6,3 +6,4 @@ xgboost>=3.0,<4
 ucimlrepo>=0.0.7,<1
 optbinning>=0.21,<1
 shap>=0.47,<1
+protobuf>=5.29.6,<6
