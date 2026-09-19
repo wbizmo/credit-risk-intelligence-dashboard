@@ -82,7 +82,7 @@ const artifact = rawArtifact as ModelArtifact;
 let runtimeModel: CompiledModel | undefined;
 let runtimeError: Error | undefined;
 
-const freezeNumbers = (values: readonly number[]): readonly number[] => Object.freeze(Array.from(values));
+const copyNumbers = (values: readonly number[]): readonly number[] => Array.from(values);
 const logit = (value: number) => Math.log(value / (1 - value));
 
 function assertFinite(value: number, message: string): void {
@@ -155,7 +155,7 @@ export function compileModelArtifact(source: ModelArtifact): CompiledModel {
     throw new Error("Invalid CRIX model artifact envelope");
   }
 
-  const featureNames = Object.freeze(Array.from(source.featureNames));
+  const featureNames = Array.from(source.featureNames);
   const featureCount = featureNames.length;
   if (featureCount === 0 || source.monotoneConstraints.length !== featureCount) {
     throw new Error("Model feature contract is inconsistent");
@@ -213,13 +213,13 @@ export function compileModelArtifact(source: ModelArtifact): CompiledModel {
     const validation = validateTree(tree, treeIndex, featureCount);
     maxTreeDepth = Math.max(maxTreeDepth, validation.depth);
     for (const feature of validation.usedFeatures) treesByFeature[feature]!.push(treeIndex);
-    return Object.freeze({
-      left: freezeNumbers(tree.left),
-      right: freezeNumbers(tree.right),
-      feature: freezeNumbers(tree.feature),
-      threshold: freezeNumbers(tree.threshold),
-      defaultLeft: freezeNumbers(tree.defaultLeft),
-    });
+    return {
+      left: copyNumbers(tree.left),
+      right: copyNumbers(tree.right),
+      feature: copyNumbers(tree.feature),
+      threshold: copyNumbers(tree.threshold),
+      defaultLeft: copyNumbers(tree.defaultLeft),
+    };
   });
 
   return Object.freeze({
@@ -229,49 +229,34 @@ export function compileModelArtifact(source: ModelArtifact): CompiledModel {
     calibrationSlope: source.calibration.slope,
     calibrationIntercept: source.calibration.intercept,
     challengerIntercept: challenger.intercept,
-    challengerCoefficients: freezeNumbers(challenger.coefficients),
-    challengerMeans: freezeNumbers(challenger.means),
-    challengerScales: freezeNumbers(challenger.scales),
-    reference: freezeNumbers(reference),
-    lowerBounds: freezeNumbers(lowerBounds),
-    upperBounds: freezeNumbers(upperBounds),
-    trees: Object.freeze(trees),
-    treesByFeature: Object.freeze(treesByFeature.map((indexes) => Object.freeze(indexes))),
+    challengerCoefficients: copyNumbers(challenger.coefficients),
+    challengerMeans: copyNumbers(challenger.means),
+    challengerScales: copyNumbers(challenger.scales),
+    reference: copyNumbers(reference),
+    lowerBounds: copyNumbers(lowerBounds),
+    upperBounds: copyNumbers(upperBounds),
+    trees,
+    treesByFeature,
     maxTreeDepth,
   });
-}
-
-function traverseTree(tree: CompiledTree, vector: readonly number[]): number {
-  let node = 0;
-  while (tree.left[node] !== -1) {
-    const featureIndex = tree.feature[node]!;
-    const value = vector[featureIndex]!;
-    const goLeft = Number.isNaN(value) ? Boolean(tree.defaultLeft[node]) : value < tree.threshold[node]!;
-    node = goLeft ? tree.left[node]! : tree.right[node]!;
-  }
-  return tree.threshold[node]!;
-}
-
-function traverseTreeWithOverride(
-  tree: CompiledTree,
-  vector: readonly number[],
-  overrideFeatureIndex: number,
-  overrideValue: number,
-): number {
-  let node = 0;
-  while (tree.left[node] !== -1) {
-    const featureIndex = tree.feature[node]!;
-    const value = featureIndex === overrideFeatureIndex ? overrideValue : vector[featureIndex]!;
-    const goLeft = Number.isNaN(value) ? Boolean(tree.defaultLeft[node]) : value < tree.threshold[node]!;
-    node = goLeft ? tree.left[node]! : tree.right[node]!;
-  }
-  return tree.threshold[node]!;
 }
 
 export function evaluateCompiledMargin(model: CompiledModel, vector: readonly number[]): number {
   if (vector.length !== model.featureNames.length) throw new Error("Feature vector length does not match compiled model");
   let margin = model.baseMargin;
-  for (const tree of model.trees) margin += traverseTree(tree, vector);
+
+  for (const tree of model.trees) {
+    let node = 0;
+    while (tree.left[node] !== -1) {
+      const featureIndex = tree.feature[node]!;
+      const value = vector[featureIndex]!;
+      node = (Number.isNaN(value) ? Boolean(tree.defaultLeft[node]) : value < tree.threshold[node]!)
+        ? tree.left[node]!
+        : tree.right[node]!;
+    }
+    margin += tree.threshold[node]!;
+  }
+
   if (!Number.isFinite(margin)) throw new Error("Model produced a non-finite margin");
   return margin;
 }
@@ -280,11 +265,22 @@ export function evaluateCompiledBaseline(model: CompiledModel, vector: readonly 
   if (vector.length !== model.featureNames.length) throw new Error("Feature vector length does not match compiled model");
   const treeContributions = new Array<number>(model.trees.length);
   let margin = model.baseMargin;
+
   for (let treeIndex = 0; treeIndex < model.trees.length; treeIndex += 1) {
-    const contribution = traverseTree(model.trees[treeIndex]!, vector);
+    const tree = model.trees[treeIndex]!;
+    let node = 0;
+    while (tree.left[node] !== -1) {
+      const featureIndex = tree.feature[node]!;
+      const value = vector[featureIndex]!;
+      node = (Number.isNaN(value) ? Boolean(tree.defaultLeft[node]) : value < tree.threshold[node]!)
+        ? tree.left[node]!
+        : tree.right[node]!;
+    }
+    const contribution = tree.threshold[node]!;
     treeContributions[treeIndex] = contribution;
     margin += contribution;
   }
+
   if (!Number.isFinite(margin)) throw new Error("Model produced a non-finite margin");
   return { margin, treeContributions };
 }
@@ -298,10 +294,23 @@ export function evaluateMarginWithFeatureOverride(
 ): number {
   if (featureIndex < 0 || featureIndex >= model.featureNames.length) throw new Error("Feature override index is out of range");
   let margin = baseline.margin;
+
   for (const treeIndex of model.treesByFeature[featureIndex]!) {
+    const tree = model.trees[treeIndex]!;
     margin -= baseline.treeContributions[treeIndex]!;
-    margin += traverseTreeWithOverride(model.trees[treeIndex]!, vector, featureIndex, overrideValue);
+    let node = 0;
+
+    while (tree.left[node] !== -1) {
+      const nodeFeatureIndex = tree.feature[node]!;
+      const value = nodeFeatureIndex === featureIndex ? overrideValue : vector[nodeFeatureIndex]!;
+      node = (Number.isNaN(value) ? Boolean(tree.defaultLeft[node]) : value < tree.threshold[node]!)
+        ? tree.left[node]!
+        : tree.right[node]!;
+    }
+
+    margin += tree.threshold[node]!;
   }
+
   if (!Number.isFinite(margin)) throw new Error("Model produced a non-finite override margin");
   return margin;
 }
