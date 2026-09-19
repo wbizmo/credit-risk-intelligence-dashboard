@@ -26,11 +26,11 @@
   "evidence": [
     {
       "path": "MODEL_CARD.md",
-      "sha256": "513c60ee5e6a85e3f1d269c3955029299eac38c2265f2142a73b5940d5baea45"
+      "sha256": "6ebbcda10f91c2b380d454a2860400cbb4fac89884cf717a74368fe08acd897e"
     },
     {
       "path": "model/TRAINING_REPORT.md",
-      "sha256": "be80c61c55f1b3190ba5d68e8d5e2cc09b86b85b7c3120e2e8122dbe0671031c"
+      "sha256": "dfc72ef4ff86199077690e723d39892f8afd3559b4b0ee04290bea61c9b8ffef"
     }
   ],
   "featureContractVersion": "crix-granting-features-v1",
