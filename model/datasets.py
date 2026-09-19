@@ -5,6 +5,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,8 @@ LENDINGCLUB_URLS = [
     "https://zenodo.org/records/11295916/files/LC_loans_granting_model_dataset.csv?download=1",
     "https://zenodo.org/api/records/11295916/files/LC_loans_granting_model_dataset.csv/content",
 ]
+LENDINGCLUB_ARCHIVE_URL = "https://zenodo.org/api/records/11295916/files-archive"
+LENDINGCLUB_FILENAME = "LC_loans_granting_model_dataset.csv"
 LENDINGCLUB_MD5 = "b019384d6bc65bf2a3e839362e4ff502"
 LENDINGCLUB_DOI = "10.5281/zenodo.11295916"
 
@@ -125,32 +128,72 @@ def _download_once(url: str, temporary: Path) -> None:
             output.write(chunk)
 
 
+def _extract_lendingclub_archive(archive_path: Path, destination: Path) -> None:
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            names = archive.namelist()
+            if LENDINGCLUB_FILENAME not in names:
+                raise RuntimeError(
+                    f"Zenodo archive does not contain expected file: {LENDINGCLUB_FILENAME}"
+                )
+            with archive.open(LENDINGCLUB_FILENAME) as source, destination.open("wb") as output:
+                while chunk := source.read(1 << 20):
+                    output.write(chunk)
+    except zipfile.BadZipFile as error:
+        raise RuntimeError("Zenodo files archive is not a valid ZIP") from error
+
+
+def _download_archive_once(url: str, archive_path: Path, destination: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "CRIX-model-training/3.0"})
+    with urllib.request.urlopen(request, timeout=300) as response, archive_path.open("wb") as output:
+        while chunk := response.read(1 << 20):
+            output.write(chunk)
+    _extract_lendingclub_archive(archive_path, destination)
+
+
+def _promote_verified_lendingclub(temporary: Path, destination: Path) -> Path:
+    actual = md5sum(temporary)
+    if actual != LENDINGCLUB_MD5:
+        raise RuntimeError(
+            f"LendingClub checksum mismatch: expected {LENDINGCLUB_MD5}, got {actual}"
+        )
+    temporary.replace(destination)
+    return destination
+
+
 def download_lendingclub(destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and md5sum(destination) == LENDINGCLUB_MD5:
         return destination
 
     temporary = destination.with_suffix(destination.suffix + ".part")
+    archive_temporary = destination.with_suffix(destination.suffix + ".zip.part")
     last_error: Exception | None = None
 
-    # Zenodo occasionally returns transient 5xx/504 responses for the 167 MB file.
-    # Retry both the canonical file URL and the Records API content URL, but still
-    # require the immutable source checksum before the cohort can enter training.
+    # Zenodo occasionally returns transient 5xx/504 responses for the 167 MB
+    # direct file endpoints. Try both direct representations first, then the
+    # official files-archive endpoint. Every path must still reproduce the same
+    # immutable CSV MD5 before the cohort can enter training.
     for attempt in range(1, 6):
         for url in LENDINGCLUB_URLS:
             temporary.unlink(missing_ok=True)
             try:
                 _download_once(url, temporary)
-                actual = md5sum(temporary)
-                if actual != LENDINGCLUB_MD5:
-                    raise RuntimeError(
-                        f"LendingClub checksum mismatch: expected {LENDINGCLUB_MD5}, got {actual}"
-                    )
-                temporary.replace(destination)
-                return destination
+                return _promote_verified_lendingclub(temporary, destination)
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, RuntimeError) as error:
                 last_error = error
                 temporary.unlink(missing_ok=True)
+
+        temporary.unlink(missing_ok=True)
+        archive_temporary.unlink(missing_ok=True)
+        try:
+            _download_archive_once(LENDINGCLUB_ARCHIVE_URL, archive_temporary, temporary)
+            return _promote_verified_lendingclub(temporary, destination)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, RuntimeError) as error:
+            last_error = error
+            temporary.unlink(missing_ok=True)
+            archive_temporary.unlink(missing_ok=True)
+
         if attempt < 5:
             time.sleep(attempt * 5)
 
