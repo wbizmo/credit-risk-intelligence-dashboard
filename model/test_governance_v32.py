@@ -17,6 +17,7 @@ from data_contracts import (
 )
 from drift import adversarial_validation, build_distribution_shift_evidence, jensen_shannon_divergence
 from explanation_validation import (
+    _segment_rows,
     deterministic_sample_indices,
     sign_agreement,
     spearman_explanation_rank,
@@ -147,6 +148,14 @@ class DataContractTests(unittest.TestCase):
                 source_features=["wrong", "feature", "contract", "set"],
             )
 
+    def test_chronological_split_rejects_impossible_date_ordering_without_row_overlap(self) -> None:
+        frame = _harmonized_fixture()
+        train = frame.iloc[[1]].copy()
+        calibration = frame.iloc[[0]].copy()
+        oot = frame.iloc[[2]].copy()
+        with self.assertRaisesRegex(ContractViolation, "chronological-boundaries"):
+            validate_chronological_splits(train, calibration, oot)
+
     def test_chronological_split_rejects_overlap(self) -> None:
         frame = _harmonized_fixture()
         train = frame.iloc[[0]].copy()
@@ -220,6 +229,22 @@ class ExplanationMetricTests(unittest.TestCase):
         third = deterministic_sample_indices(1000, 100, 43)
         np.testing.assert_array_equal(first, second)
         self.assertFalse(np.array_equal(first, third))
+
+    def test_weak_explanation_segments_return_insufficient_data(self) -> None:
+        shap_values = np.array([[1.0, 0.5, 0.1], [0.9, 0.4, 0.2]])
+        local_values = np.array([[0.8, 0.6, 0.1], [0.7, 0.5, 0.2]])
+        perturbed = local_values.copy()
+        rows = _segment_rows(
+            shap_values,
+            local_values,
+            perturbed,
+            np.array(["thin", "thin"]),
+            k=2,
+            minimum_count=3,
+        )
+        self.assertEqual(rows, [
+            {"segment": "thin", "status": "insufficient-data", "count": 2}
+        ])
 
     def test_metadata_mismatch_fails_before_explanation_report(self) -> None:
         with self.assertRaisesRegex(ValueError, "does not match"):
