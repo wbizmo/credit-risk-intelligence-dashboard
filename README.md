@@ -91,20 +91,24 @@ Offline research adds empirical recovery/severity LGD and instalment EAD modelli
 
 The live API still preserves its existing deterministic LGD and requested-amount EAD semantics; research artifacts are not silently substituted into runtime scoring.
 
-### Correlated portfolio Monte Carlo
+### Correlated portfolio Monte Carlo and tail research
 
-`model/portfolio_risk.py` implements a deterministic one-factor latent-default simulation with bounded-memory chunking and fixed-seed replay.
+`model/portfolio_risk.py` keeps the canonical deterministic one-factor Gaussian simulation, while v3.2 research adds Student-t dependence, bounded low-rank multi-factor loadings, a single-replay tail-attribution algorithm, and an optional lazy CuPy backend for offline GPU experiments.
 
 Research outputs include:
 
 - expected loss and unexpected loss;
-- loss variance;
 - VaR and expected shortfall at supported confidence levels;
 - independent-default baseline comparison;
-- tail-risk contributions;
+- bounded-memory tail-risk contributions;
+- explicit dependency-model and backend metadata;
 - explicit 99.9% precision withholding when scenario support is too small.
 
-The RNG/reduction path is deterministic across chunk sizes. Heavy simulation stays offline rather than using `Promise.all` or CPU loops in Fastify.
+NumPy remains the canonical reproducible path and the legacy Gaussian seeded digest is preserved. The live TypeScript API gains no Python/CUDA dependency.
+
+`model/evt.py` separately implements research-only Peaks-Over-Threshold GPD tail extrapolation with threshold-stability diagnostics, bounded optional bootstrap intervals, explicit insufficient/unstable states, and correct withholding of expected shortfall when the fitted GPD mean is not finite. EVT never replaces empirical Monte Carlo VaR/ES.
+
+See [`docs/PORTFOLIO_TAIL_RISK.md`](./docs/PORTFOLIO_TAIL_RISK.md) for the dependency, GPU, attribution and EVT research contract.
 
 ### Empirical macro stress
 
