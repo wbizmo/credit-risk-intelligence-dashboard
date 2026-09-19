@@ -9,11 +9,6 @@ from scipy.stats import rankdata
 EXPLANATION_VALIDATION_VERSION = "crix-explanation-fidelity-v1"
 
 
-def _sigmoid(value: np.ndarray) -> np.ndarray:
-    clipped = np.clip(value, -60.0, 60.0)
-    return 1.0 / (1.0 + np.exp(-clipped))
-
-
 def _calibrated_probability(calibrator, margin: np.ndarray) -> np.ndarray:
     values = np.asarray(margin, dtype=float).reshape(-1, 1)
     probability = calibrator.predict_proba(values)[:, 1]
@@ -83,12 +78,14 @@ def _local_sensitivity(
     baseline_margin = np.asarray(model.predict(X, output_margin=True), dtype=float)
     baseline_pd = _calibrated_probability(calibrator, baseline_margin)
     impacts = np.zeros((len(X), X.shape[1]), dtype=np.float64)
+    changed = np.array(X, dtype=np.float32, copy=True)
     for index in range(X.shape[1]):
-        changed = np.array(X, dtype=np.float32, copy=True)
+        original = changed[:, index].copy()
         changed[:, index] = reference[index]
         changed_margin = np.asarray(model.predict(changed, output_margin=True), dtype=float)
         changed_pd = _calibrated_probability(calibrator, changed_margin)
         impacts[:, index] = baseline_pd - changed_pd
+        changed[:, index] = original
     return baseline_pd, impacts
 
 
