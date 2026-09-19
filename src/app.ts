@@ -58,6 +58,9 @@ export interface AppBuildOptions {
 
 export async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
   validateRuntimeSecurityConfig(config);
+  if (config.telemetryEnabled && !config.otelMetricsEndpoint && !options.telemetry) {
+    throw new Error("CRIX telemetry is enabled but no metrics exporter endpoint is configured.");
+  }
   const routeRateLimitScale = Math.max(0.01, Math.min(1_000, options.routeRateLimitScale ?? 1));
   const routeLimit = (max: number): number => Math.max(1, Math.floor(max * routeRateLimitScale));
   const telemetry = options.telemetry ?? createTelemetry({
@@ -134,7 +137,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       ],
       components: {
         securitySchemes: {
-          ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key", description: "Required only when CRIX_API_KEY is configured on the server." },
+          ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key", description: "Required for /api/v3/* only when CRIX_AUTH_MODE=required." },
         },
       },
     },
