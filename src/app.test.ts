@@ -37,6 +37,26 @@ const config = (apiKey?: string, overrides: Partial<AppConfig> = {}): AppConfig 
 });
 
 describe("CRIX HTTP API", () => {
+  it("fails app construction closed for missing or weak required-mode credentials", async () => {
+    await expect(buildApp(config(undefined, {
+      authMode: "required",
+      apiKeys: [],
+    }))).rejects.toThrow(/requires at least one API key/);
+
+    await expect(buildApp(config(undefined, {
+      authMode: "required",
+      apiKeys: ["tiny"],
+    }))).rejects.toThrow(/at least 24 characters/);
+  });
+
+  it("reports the explicit public-demo posture without inferring it from key presence", async () => {
+    const app = await buildApp(config());
+    const response = await app.inject({ method: "GET", url: "/" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().authentication).toBe("public-demo");
+    await app.close();
+  });
+
   it("serves health and readiness probes", async () => {
     const app = await buildApp(config());
     const health = await app.inject({ method: "GET", url: "/health" });
