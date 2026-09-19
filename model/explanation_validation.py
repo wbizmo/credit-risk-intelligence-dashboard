@@ -103,6 +103,14 @@ def _small_valid_perturbation(
     return np.clip(X + delta[None, :], lower[None, :], upper[None, :]).astype(np.float32)
 
 
+def deterministic_sample_indices(population_size: int, sample_size: int, seed: int) -> np.ndarray:
+    if population_size < 0 or sample_size < 0:
+        raise ValueError("population_size and sample_size must be non-negative")
+    size = min(population_size, sample_size)
+    rng = np.random.default_rng(seed)
+    return np.sort(rng.choice(population_size, size=size, replace=False)) if size else np.array([], dtype=int)
+
+
 def _metrics(
     shap_values: np.ndarray,
     local_values: np.ndarray,
@@ -130,11 +138,13 @@ def _metrics(
         top_k_overlap(local_values[index], stability_values[index], k=k)
         for index in range(len(local_values))
     ]
+    overlap_array = np.asarray(overlaps, dtype=float)
     return {
         "status": "pass",
         "count": int(len(shap_values)),
         "topK": int(k),
-        "meanTopKOverlap": float(np.mean(overlaps)),
+        "meanTopKOverlap": float(np.mean(overlap_array)),
+        "topKDisagreementRate": float(np.mean(overlap_array < 1.0)),
         "meanAbsoluteRankCorrelation": float(np.mean(ranks)) if ranks else None,
         "meanSignAgreement": float(np.mean(signs)) if signs else None,
         "meanPerturbationTopKStability": float(np.mean(stability)),
@@ -234,7 +244,6 @@ def build_explanation_fidelity_report(
     if not np.isfinite(X).all():
         raise ValueError("explanation validation requires finite governed features")
 
-    rng = np.random.default_rng(seed)
     size = min(sample_size, len(X))
     if size < max(50, minimum_segment_count):
         return {
@@ -244,7 +253,7 @@ def build_explanation_fidelity_report(
             "sampleSize": size,
             "minimumRequired": max(50, minimum_segment_count),
         }
-    indices = np.sort(rng.choice(len(X), size=size, replace=False))
+    indices = deterministic_sample_indices(len(X), size, seed)
     sample = X[indices]
 
     reference_vector = np.asarray([reference[name] for name in feature_names], dtype=np.float32)
