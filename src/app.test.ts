@@ -21,14 +21,19 @@ const application = {
   recentCreditGrowth: 0.08,
 };
 
-const config = (apiKey?: string): AppConfig => ({
+const config = (apiKey?: string, overrides: Partial<AppConfig> = {}): AppConfig => ({
   host: "127.0.0.1",
   port: 3000,
   logLevel: "silent",
   rateLimitMax: 1000,
-  ...(apiKey ? { apiKey } : {}),
+  authMode: apiKey ? "required" : "public-demo",
+  apiKeys: apiKey ? [apiKey] : [],
+  trustProxyHops: 0,
+  telemetryEnabled: false,
+  otelExportIntervalMs: 60_000,
   corsOrigins: [],
   environment: "test",
+  ...overrides,
 });
 
 describe("CRIX HTTP API", () => {
@@ -142,19 +147,40 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
-  it("enforces optional API-key authentication with the same public health probes", async () => {
-    const app = await buildApp(config("top-secret-test-key"));
+  it("keeps public probes open while required mode accepts current and rotated keys", async () => {
+    const current = "crix-current-test-key-0123456789abcdef";
+    const next = "crix-next-test-key-0123456789abcdefghij";
+    const app = await buildApp(config(undefined, {
+      authMode: "required",
+      apiKeys: [current, next],
+    }));
     const health = await app.inject({ method: "GET", url: "/health" });
     const denied = await app.inject({ method: "POST", url: "/api/v3/risk/score", payload: application });
-    const allowed = await app.inject({
+    const unknown = await app.inject({
       method: "POST",
       url: "/api/v3/risk/score",
-      headers: { "x-api-key": "top-secret-test-key" },
+      headers: { "x-api-key": "unknown-key-that-must-never-be-echoed" },
+      payload: application,
+    });
+    const currentAllowed = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-api-key": current },
+      payload: application,
+    });
+    const nextAllowed = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-api-key": next },
       payload: application,
     });
     expect(health.statusCode).toBe(200);
     expect(denied.statusCode).toBe(401);
-    expect(allowed.statusCode).toBe(200);
+    expect(unknown.statusCode).toBe(401);
+    expect(JSON.stringify(unknown.json())).not.toContain("unknown-key-that-must-never-be-echoed");
+    expect(JSON.stringify(unknown.json())).not.toContain(current);
+    expect(currentAllowed.statusCode).toBe(200);
+    expect(nextAllowed.statusCode).toBe(200);
     await app.close();
   });
 
@@ -186,6 +212,83 @@ describe("CRIX HTTP API", () => {
       error: "RATE_LIMITED",
       message: "Too many requests.",
     });
+    await app.close();
+  });
+
+  it("ignores spoofed forwarded IPs when proxy trust is disabled", async () => {
+    const app = await buildApp(config(), { routeRateLimitScale: 0.02 });
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-forwarded-for": "198.51.100.10" },
+      payload: application,
+    });
+    const spoofedSecond = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-forwarded-for": "203.0.113.77" },
+      payload: application,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(spoofedSecond.statusCode).toBe(429);
+    await app.close();
+  });
+
+  it("honors exactly one forwarded client hop when explicitly configured", async () => {
+    const app = await buildApp(config(undefined, { trustProxyHops: 1 }), { routeRateLimitScale: 0.02 });
+    const firstClient = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-forwarded-for": "198.51.100.10" },
+      payload: application,
+    });
+    const secondClient = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-forwarded-for": "203.0.113.77" },
+      payload: application,
+    });
+    const firstClientAgain = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-forwarded-for": "198.51.100.10" },
+      payload: application,
+    });
+    expect(firstClient.statusCode).toBe(200);
+    expect(secondClient.statusCode).toBe(200);
+    expect(firstClientAgain.statusCode).toBe(429);
+    await app.close();
+  });
+
+  it("rate-limits authenticated clients by bounded key slot rather than raw credentials", async () => {
+    const current = "crix-current-test-key-0123456789abcdef";
+    const next = "crix-next-test-key-0123456789abcdefghij";
+    const app = await buildApp(config(undefined, {
+      authMode: "required",
+      apiKeys: [current, next],
+    }), { routeRateLimitScale: 0.02 });
+
+    const firstCurrent = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-api-key": current },
+      payload: application,
+    });
+    const secondCurrent = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-api-key": current },
+      payload: application,
+    });
+    const firstNext = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: { "x-api-key": next },
+      payload: application,
+    });
+    expect(firstCurrent.statusCode).toBe(200);
+    expect(secondCurrent.statusCode).toBe(429);
+    expect(firstNext.statusCode).toBe(200);
     await app.close();
   });
 
