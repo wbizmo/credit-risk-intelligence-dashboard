@@ -69,6 +69,13 @@ function validateKeys(mode: AuthMode, keys: readonly string[], authModeConfigure
   }
 }
 
+export function validateRuntimeSecurityConfig(config: Pick<AppConfig, "authMode" | "apiKeys" | "trustProxyHops">): void {
+  validateKeys(config.authMode, config.apiKeys, true);
+  if (!Number.isInteger(config.trustProxyHops) || config.trustProxyHops < 0 || config.trustProxyHops > MAX_TRUST_PROXY_HOPS) {
+    throw new Error(`trustProxyHops must be an integer from 0 to ${MAX_TRUST_PROXY_HOPS}.`);
+  }
+}
+
 function optionalHttpUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
