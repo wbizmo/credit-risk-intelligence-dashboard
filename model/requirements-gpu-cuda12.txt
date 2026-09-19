@@ -1,0 +1,4 @@
+# Optional CUDA 12 research environment only.
+# Keep model/requirements.txt as the CPU-safe canonical environment.
+-r requirements.txt
+cupy-cuda12x>=13,<14

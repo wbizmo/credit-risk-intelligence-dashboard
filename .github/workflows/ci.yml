@@ -39,6 +39,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install governance and research-adapter test dependencies
-        run: pip install "numpy>=2.0,<3" "pandas>=2.2,<3"
+        run: pip install "numpy>=2.0,<3" "pandas>=2.2,<3" "scipy>=1.14,<2"
       - name: Run CRIX model-governance tests
         run: python -m unittest discover -s model -p 'test_*.py' -v
+      - name: Capture Batch B portfolio benchmark evidence
+        run: python model/benchmark_portfolio.py --quick
+      - name: Capture Batch B synthetic tail validation
+        run: python model/validate_tail_models.py
