@@ -192,10 +192,35 @@ def main() -> None:
 
     scenarios = 12_000 if args.quick else 50_000
     n = 40 if args.quick else 150
+
+    baseline_no_contributions = _measure(
+        lambda: simulate_portfolio(
+            np.linspace(0.015, 0.18, n),
+            np.linspace(0.25, 0.75, n),
+            np.geomspace(500.0, 50_000.0, n),
+            rho=0.20,
+            scenarios=scenarios,
+            seed=42,
+            chunk_size=min(1024, scenarios),
+            quantiles=(0.90, 0.95, 0.99),
+            tail_contributions=False,
+        )
+    )
+
     tail_cases = [
         _tail_case(n=n, scenarios=scenarios, quantiles=(0.95,)),
         _tail_case(n=n, scenarios=scenarios, quantiles=(0.90, 0.95, 0.99)),
         _tail_case(n=n, scenarios=scenarios, quantiles=(0.80, 0.90, 0.95, 0.975, 0.99)),
+    ]
+
+    scaling_specs = (
+        [(20, 10_000), (40, 12_000), (80, 16_000)]
+        if args.quick
+        else [(50, 25_000), (200, 100_000), (500, 250_000)]
+    )
+    scaling_cases = [
+        _tail_case(n=size, scenarios=count, quantiles=(0.90, 0.95, 0.99), seed=1000 + index)
+        for index, (size, count) in enumerate(scaling_specs)
     ]
 
     gpu_sizes = (
@@ -210,6 +235,12 @@ def main() -> None:
         "numpyVersion": np.__version__,
         "researchOnly": True,
         "tailAttribution": tail_cases,
+        "contributionsDisabled": {
+            **baseline_no_contributions,
+            "portfolioSize": n,
+            "scenarios": scenarios,
+        },
+        "scaling": scaling_cases,
         "gpuBackend": {
             "canonicalEvidenceBackend": "numpy",
             "cases": gpu_cases,
