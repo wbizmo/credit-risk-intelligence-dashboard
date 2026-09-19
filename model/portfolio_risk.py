@@ -325,6 +325,35 @@ def _defaults_chunk(
     return latent < threshold_values[None, :]
 
 
+def _simulate_loss_vector(
+    *,
+    loss_given_default: np.ndarray,
+    thresholds: np.ndarray,
+    spec: DependencySpec,
+    scenarios: int,
+    chunk_size: int,
+    seed: int,
+    backend: ArrayBackend,
+) -> np.ndarray:
+    losses = np.empty(scenarios, dtype=np.float64)
+    loss_backend = backend.xp.asarray(loss_given_default, dtype=backend.xp.float64)
+    n = loss_given_default.size
+    for start in range(0, scenarios, chunk_size):
+        stop = min(scenarios, start + chunk_size)
+        defaults = _defaults_chunk(
+            start=start,
+            stop=stop,
+            obligor_count=n,
+            seed=seed,
+            thresholds=thresholds,
+            spec=spec,
+            backend=backend,
+        )
+        chunk_losses = _scenario_losses(defaults, loss_backend, backend)
+        losses[start:stop] = backend.to_numpy(chunk_losses).astype(np.float64, copy=False)
+    return losses
+
+
 def _tail_contributions_shared_pass(
     *,
     losses: np.ndarray,
@@ -480,22 +509,15 @@ def simulate_portfolio(
     spec = _resolve_dependency(n, rho, dependency_model)
     thresholds = _dependency_thresholds(pd_v, spec)
     loss_given_default = lgd_v * ead_v
-    losses = np.empty(scenarios, dtype=np.float64)
-    loss_backend = backend_impl.xp.asarray(loss_given_default, dtype=backend_impl.xp.float64)
-
-    for start in range(0, scenarios, chunk_size):
-        stop = min(scenarios, start + chunk_size)
-        defaults = _defaults_chunk(
-            start=start,
-            stop=stop,
-            obligor_count=n,
-            seed=seed,
-            thresholds=thresholds,
-            spec=spec,
-            backend=backend_impl,
-        )
-        chunk_losses = _scenario_losses(defaults, loss_backend, backend_impl)
-        losses[start:stop] = backend_impl.to_numpy(chunk_losses).astype(np.float64, copy=False)
+    losses = _simulate_loss_vector(
+        loss_given_default=loss_given_default,
+        thresholds=thresholds,
+        spec=spec,
+        scenarios=scenarios,
+        chunk_size=chunk_size,
+        seed=seed,
+        backend=backend_impl,
+    )
 
     expected = float(np.mean(losses))
     unexpected = float(np.std(losses, ddof=0))
