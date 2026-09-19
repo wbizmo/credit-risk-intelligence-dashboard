@@ -1,4 +1,4 @@
-# CRIX v3 Architecture
+# CRIX v3.2 Architecture
 
 CRIX is intentionally a **stateless backend API**. The primary risk model is the core product; HTTP is the delivery mechanism.
 
@@ -38,7 +38,19 @@ Risk Engine
 Versioned JSON model artifact
 ```
 
-There is no database, Redis instance, queue, browser application, Python inference service or external inference dependency in the live system.
+There is no database, Redis instance, queue, browser application, Python inference service or external inference dependency in the live system. Package release **3.2.0** remains on API contract **3.0.0** and namespace **`/api/v3`**; release metadata is surfaced separately so package changes do not masquerade as API-semantic changes.
+
+## Runtime / research complexity boundaries
+
+- compiled live champion evaluation traverses the fixed approved tree ensemble;
+- explanation overrides revisit only trees indexed to the changed champion feature;
+- live batch scoring is linear in batch count and hard-capped at 50;
+- Monte Carlo simulation is dominated by `O(S*N)` with chunk memory `O(C*N)`;
+- shared tail attribution is `O(S*N + S*log(Q) + Q*N)` after indexed disjoint-bucket accumulation;
+- low-rank factor simulation is `O(S*N*K)` and avoids dense `N*N` correlation storage;
+- the exact constrained portfolio selector remains intentionally exponential and capped at 24 eligible candidates, but v3.2 removes avoidable per-subset `O(n)` reconstruction via Gray-code incremental state.
+
+Heavy combinatorial/Monte Carlo work remains outside Fastify.
 
 ## Offline model-development boundary
 
