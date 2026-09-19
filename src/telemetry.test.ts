@@ -1,5 +1,7 @@
 import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { describe, expect, it } from "vitest";
+import { buildApp } from "./app";
+import type { AppConfig } from "./config";
 import { createInMemoryTelemetry, createTelemetry } from "./telemetry";
 import type { RiskResult } from "./risk/types";
 
@@ -25,6 +27,12 @@ const result: RiskResult = {
   outOfDistribution: ["creditScore"],
   flags: [],
 };
+
+function metricNames(exporter: InMemoryMetricExporter): string[] {
+  return exporter.getMetrics().flatMap((resource) =>
+    resource.scopeMetrics.flatMap((scope) => scope.metrics.map((metric) => metric.descriptor.name)),
+  );
+}
 
 function allAttributes(exporter: InMemoryMetricExporter): Record<string, unknown>[] {
   return exporter.getMetrics().flatMap((resource) =>
@@ -81,6 +89,82 @@ describe("OpenTelemetry metrics", () => {
     expect(serialized).toContain("creditScore");
     expect(serialized).not.toContain("demo-001");
     expect(serialized).not.toContain("super-secret");
+    await telemetry.shutdown();
+  });
+
+  it("keeps request IDs, borrower values, IPs and credentials out of integrated HTTP metrics", async () => {
+    const apiKey = "crix-telemetry-secret-0123456789abcdef";
+    const config: AppConfig = {
+      host: "127.0.0.1",
+      port: 0,
+      logLevel: "silent",
+      rateLimitMax: 1000,
+      authMode: "required",
+      apiKeys: [apiKey],
+      trustProxyHops: 0,
+      telemetryEnabled: false,
+      otelExportIntervalMs: 60_000,
+      corsOrigins: [],
+      environment: "test",
+    };
+    const { telemetry, exporter } = createInMemoryTelemetry();
+    const app = await buildApp(config, { telemetry });
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: {
+        "x-api-key": "unknown-sensitive-credential-value",
+        "x-forwarded-for": "203.0.113.99",
+      },
+      payload: { ...result, applicationId: "borrower-application-secret" },
+    });
+    expect(denied.statusCode).toBe(401);
+
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      headers: {
+        "x-api-key": apiKey,
+        "x-forwarded-for": "203.0.113.99",
+      },
+      payload: {
+        applicationId: "borrower-application-secret",
+        annualIncome: 85_000,
+        debtToIncome: 0.28,
+        creditScore: 720,
+        creditUtilization: 0.3,
+        delinquencies24m: 0,
+        inquiries6m: 1,
+        oldestTradeMonths: 96,
+        openAccounts: 7,
+        loanAmount: 24_000,
+        termMonths: 36,
+        employmentYears: 5,
+        cashBufferMonths: 3,
+        onTimePaymentRate: 0.98,
+        incomeStability: 0.82,
+        recentCreditGrowth: 0.08,
+      },
+    });
+    expect(allowed.statusCode).toBe(200);
+
+    expect(await telemetry.forceFlush()).toBe(true);
+    const names = metricNames(exporter);
+    expect(names).toContain("crix.auth.rejections");
+    expect(names).toContain("crix.risk.decisions");
+
+    const attributes = allAttributes(exporter);
+    const values = attributes.flatMap((attributeSet) => Object.values(attributeSet));
+    expect(values).not.toContain("borrower-application-secret");
+    expect(values).not.toContain(apiKey);
+    expect(values).not.toContain("unknown-sensitive-credential-value");
+    expect(values).not.toContain("203.0.113.99");
+    expect(values).not.toContain(85_000);
+    expect(values).not.toContain(720);
+    expect(values).not.toContain(24_000);
+
+    await app.close();
     await telemetry.shutdown();
   });
 
