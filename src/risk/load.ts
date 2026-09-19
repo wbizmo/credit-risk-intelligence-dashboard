@@ -34,6 +34,7 @@ interface ScenarioResult {
   requests: number;
   elapsedMs: number;
   requestsPerSecond: number;
+  opsPerSecond: number;
   meanMs: number;
   p50Ms: number;
   p90Ms: number;
