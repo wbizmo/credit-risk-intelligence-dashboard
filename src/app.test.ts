@@ -43,6 +43,14 @@ describe("CRIX HTTP API", () => {
     await app.close();
   });
 
+  it("reports not-ready when compiled model initialization fails", async () => {
+    const app = await buildApp(config(), { verifyModel: () => false });
+    const ready = await app.inject({ method: "GET", url: "/ready" });
+    expect(ready.statusCode).toBe(503);
+    expect(ready.json()).toMatchObject({ status: "not-ready", modelLoaded: false });
+    await app.close();
+  });
+
   it("publishes non-cacheable valid OpenAPI through public, legacy and canonical Swagger endpoints", async () => {
     const app = await buildApp(config());
 
