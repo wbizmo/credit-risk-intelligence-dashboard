@@ -30,13 +30,3 @@ if (pyMeta.generator !== "pip-tools==7.6.1" || pyMeta.python !== "3.12") {
 if (!pyLock.includes("--hash=sha256:")) {
   throw new Error("Python research lock must contain package hashes.");
 }
-
-process.stdout.write(`${JSON.stringify({
-  npm: { lockfileVersion: npmLock.lockfileVersion, packageVersion: pkg.version },
-  python: {
-    requirementsSha256: requirementsSha,
-    lockSha256: lockSha,
-    generator: pyMeta.generator,
-    python: pyMeta.python,
-  },
-}, null, 2)}\n`);
