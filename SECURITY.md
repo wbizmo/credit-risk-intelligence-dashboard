@@ -1,5 +1,17 @@
 # Security Policy
 
+## v3.2 certification evidence
+
+- explicit `public-demo` and fail-closed `required` authentication postures;
+- at most two active high-entropy API keys for current/next rotation, matched with fixed-length SHA-256 digests and `timingSafeEqual`;
+- proxy trust disabled by default and bounded by configured trusted hops;
+- raw credentials/hashes excluded from rate-limit labels, logs and telemetry;
+- privacy-bounded OpenTelemetry attributes only;
+- Batch D audit: **0 known Node production vulnerabilities** and **0 known vulnerabilities in the governed Python research lock**;
+- CI deliberately corrupts npm/Python dependency inputs and requires lock-drift verification to fail closed.
+
+These are engineering controls, not a statement of regulatory/security certification.
+
 CRIX v3 is a public engineering/model-risk demonstration. It is deliberately stateless and does not persist submitted applications.
 
 ## Runtime controls
