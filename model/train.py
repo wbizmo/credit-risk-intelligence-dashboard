@@ -24,6 +24,7 @@ from datasets import (
     MONOTONE,
     download_lendingclub,
     harmonize_lendingclub,
+    md5sum,
 )
 from drift import build_distribution_shift_evidence
 from explanation_validation import build_explanation_fidelity_report
@@ -291,6 +292,12 @@ def main() -> None:
         if args.no_download:
             raise FileNotFoundError(args.data)
         download_lendingclub(args.data)
+
+    source_md5 = md5sum(args.data)
+    if source_md5 != LENDINGCLUB_MD5:
+        raise RuntimeError(
+            f"LendingClub source checksum mismatch: expected {LENDINGCLUB_MD5}, got {source_md5}"
+        )
 
     dataset = harmonize_lendingclub(args.data)
     eligible, train, calibration, test = split_chronologically(dataset.frame)
