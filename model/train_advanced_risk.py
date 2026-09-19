@@ -193,7 +193,8 @@ def _decision_demo(portfolio: pd.DataFrame, pd12: np.ndarray, lgd: float, ead12:
         min_approval_count=1,
     )
     if result["status"] == "optimal":
-        selected = [candidate for candidate in candidates if candidate.candidate_id in set(result["selectedIds"])]
+        selected_ids = set(result["selectedIds"])
+        selected = [candidate for candidate in candidates if candidate.candidate_id in selected_ids]
         revalidated = {
             "exposure": sum(candidate.exposure for candidate in selected),
             "expectedLoss": sum(candidate.expected_loss for candidate in selected),
