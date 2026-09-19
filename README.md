@@ -75,7 +75,7 @@ The release is backed by measured CI evidence rather than performance claims inf
 | Compiled champion | **~536,854 ops/s** on the Batch A CI host; p50 **0.003746 ms** |
 | Full assessment | p50 **0.018628 ms** compiled vs **0.025889 ms** reference |
 | Explanation work | **317** deployed tree visits vs **384** full-rescore visits (**17.45%** reduction) |
-| Tail attribution | shared replay **~2.80×** faster at 3 quantiles and **~4.63×** at 5 quantiles than the pre-v3.2 reference replay |
+| Tail attribution | shared replay was **~0.80×** the reference speed at 1 quantile (fixed overhead dominates), **~2.42×** faster at 3 quantiles, and **~4.03×** faster at 5 quantiles |
 | HTTP rate-limit profile | **60×200 + 20×429**, **0** 5xx, **0** timeouts |
 | Sustained score profile | **500/500** HTTP 200, **0** failures |
 | Authenticated profile | **40/40** HTTP 200 |
