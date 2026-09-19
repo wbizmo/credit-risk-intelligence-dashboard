@@ -20,12 +20,12 @@ The model is the product; HTTP + OpenAPI are the live interface. Heavy portfolio
 
 ## Release / model versions
 
-- Package release: **3.1.0**
+- Package release: **3.2.0**
 - API namespace: **`/api/v3`**
 - Live primary model: **CRIX-MonoBoost 2.0.0**
 - Live decision policy: **CRIX-Policy 3.0**
 
-The package and API/model versions are intentionally independent. v3.1 adds research capabilities without silently changing the deployed v3 PD target or runtime champion.
+The package, API, model and policy versions are intentionally independent. CRIX v3.2.0 adds runtime performance work, deeper tail-risk research, model-governance controls, hardened deployment modes, privacy-bounded telemetry and reproducible dependency evidence without changing the `/api/v3` PD target, CRIX-MonoBoost 2.0.0 champion or CRIX-Policy 3.0 semantics.
 
 ## Primary champion — real LendingClub outcomes
 
@@ -66,7 +66,30 @@ The wider API accepts additional context for policy, confidence, deterministic r
 
 These are model-development diagnostics, not a cosmetic “accuracy” score.
 
-## v3.1 research stack
+## v3.2 measured engineering evidence
+
+The release is backed by measured CI evidence rather than performance claims inferred from architecture.
+
+| Area | v3.2 evidence |
+|---|---|
+| Compiled champion | **~536,854 ops/s** on the Batch A CI host; p50 **0.003746 ms** |
+| Full assessment | p50 **0.018628 ms** compiled vs **0.025889 ms** reference |
+| Explanation work | **317** deployed tree visits vs **384** full-rescore visits (**17.45%** reduction) |
+| Tail attribution | shared replay **~2.80×** faster at 3 quantiles and **~4.63×** at 5 quantiles than the pre-v3.2 reference replay |
+| HTTP rate-limit profile | **60×200 + 20×429**, **0** 5xx, **0** timeouts |
+| Sustained score profile | **500/500** HTTP 200, **0** failures |
+| Authenticated profile | **40/40** HTTP 200 |
+| Drift evidence | adversarial validation AUC **0.5593**, aggregate status **pass** |
+| Explanation fidelity | top-3 overlap **97.59%**, sign agreement **95.33%**, perturbation stability **96.94%** on governed n=512 OOT sample |
+| Telemetry cost | in-memory exporter mean **+5.3%**, p95 **+1.0%** in the Batch D loopback benchmark |
+| Supply chain | **0** known Node production vulnerabilities; **0** known vulnerabilities in the governed Python research lock at certification |
+| Final Batch D suites | **64 Node tests** + **91 Python tests**, with one optional GPU-only skip |
+
+The runtime figures above came from the recorded CI benchmark environment (Node 22.23.2 on AMD EPYC 7763 for the Batch A runtime measurements). Loopback timings are engineering evidence, not Render/internet/end-user latency SLOs.
+
+The optional CuPy backend has no published speedup number in v3.2.0 because the connected release infrastructure has no CUDA device. CRIX therefore makes **no GPU crossover/speedup claim** in this release; NumPy remains the canonical deterministic evidence path.
+
+## v3.2 research and governance stack
 
 The research boundary is intentionally separate from the live `/api/v3` score contract.
 
@@ -139,7 +162,7 @@ These outputs are deliberately labelled **Basel-style / economic-capital researc
 
 The actual embedded real-data logistic challenger is evaluated against the champion on the same LendingClub calibration/OOT cohorts using more than AUC: calibration, Brier/log loss, PSI/stability, bootstrap uncertainty and segment evidence are included.
 
-`model/decisioning.py` adds deterministic constrained portfolio optimisation. It fails explicitly on infeasible constraint sets, never silently relaxes risk limits, and exact toy portfolios are verified against exhaustive enumeration.
+`model/decisioning.py` adds deterministic constrained portfolio optimisation. It fails explicitly on infeasible constraint sets, never silently relaxes risk limits, and exact toy portfolios are verified against an independent exhaustive reference. The v3.2 final audit replaced repeated subset reconstruction (`O(n·2^n)` bookkeeping) with Gray-code incremental state (`O(2^n log G)` with segment constraints, where `G` is the number of segments), while retaining the hard 24-candidate exact-search bound.
 
 ## External real-world evidence without dataset soup
 
@@ -228,7 +251,7 @@ curl -X POST http://localhost:3000/api/v3/risk/score \
   }'
 ```
 
-If `CRIX_API_KEY` is configured, add `-H 'x-api-key: your-key'`.
+For hardened mode, set `CRIX_AUTH_MODE=required` and configure `CRIX_API_KEYS` with one current key or a bounded current+next rotation pair, then add `-H 'x-api-key: your-key'`. Public-demo mode is explicit and contains no configured API key.
 
 ## Offline research / model development
 
@@ -237,7 +260,7 @@ Python is offline/build-time only. The live API does **not** run Python or call 
 ```bash
 python -m venv model/.venv
 # activate the environment for your OS
-pip install -r model/requirements.txt
+pip install --require-hashes -r model/requirements.lock
 python model/train.py
 python model/train_risk_stack.py
 python model/train_advanced_risk.py
@@ -254,9 +277,11 @@ The model-validation workflow rebuilds the primary model, validates immutable re
 - per-request opaque request IDs;
 - Helmet security headers;
 - global and endpoint-specific rate limits;
-- optional API-key authentication using constant-time comparison;
+- explicit `public-demo` / fail-closed `required` auth modes with constant-time current+next key rotation;
+- reverse-proxy trust disabled by default and bounded to an explicit trusted-hop count;
 - CORS disabled unless allow-listed;
 - credential-header log redaction and sanitized errors;
+- optional low-cardinality OpenTelemetry metrics with no borrower IDs, raw feature values, credentials or exact PD labels;
 - finite-number checks inside the engine;
 - bounded tree traversal and explanation work;
 - artifact-integrity/readiness checks;
@@ -273,7 +298,7 @@ See [`SECURITY.md`](./SECURITY.md), [`ARCHITECTURE.md`](./ARCHITECTURE.md), and 
 HTTP client
    ↓
 Fastify 5
-   ├─ strict validation / limits / optional API key
+   ├─ strict validation / limits / explicit auth posture
    ├─ health + readiness
    ├─ Swagger / OpenAPI
    └─ /api/v3 risk routes
@@ -301,6 +326,18 @@ Offline research boundary
 ```
 
 No PostgreSQL, Redis, Python inference service or paid AI API is required at runtime.
+
+### Complexity boundaries retained in v3.2
+
+- live champion scoring: bounded by the fixed deployed tree ensemble;
+- sparse explanation rescoring: only trees that reference the changed feature are revisited;
+- synchronous HTTP batch scoring: linear in batch size and hard-capped at **50**;
+- Monte Carlo simulation: dominant `O(S·N)` with chunk memory `O(C·N)`;
+- shared tail attribution: `O(S·N + S·log Q + Q·N)` rather than `O(Q·S·N)` replay;
+- low-rank multi-factor simulation: `O(S·N·K)` without a dense `N×N` correlation matrix;
+- exact constrained portfolio selection: intentionally exponential but hard-capped at 24 eligible candidates; v3.2 removes the avoidable extra `n` factor from subset bookkeeping.
+
+The final audit also moved invariant NumPy/CuPy thresholds/loadings out of the Monte Carlo chunk loop and collapsed live batch summary accounting to one pass.
 
 ## Disclaimer
 
