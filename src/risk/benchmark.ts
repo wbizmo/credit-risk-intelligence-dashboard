@@ -173,22 +173,22 @@ const fullExplanationTreeVisits = benchmarkExpectedFullExplanationTreeVisits();
 const sparseExplanationTreeVisits = complexityProbe.complexity.explanationTreeVisits;
 
 const results: BenchmarkResult[] = [
-  run("single-assessment", 2_000, 250, (index) => assessRisk({
+  run("single-assessment", 1_000, 100, (index) => assessRisk({
     ...baseline,
     debtToIncome: 0.20 + (index % 50) / 100,
     creditScore: 610 + (index % 150),
   }), complexityProbe.complexity),
-  run("reference-full-assessment", 750, 100, (index) => assessRiskReferenceForTest({
+  run("reference-full-assessment", 1_000, 100, (index) => assessRiskReferenceForTest({
     ...baseline,
     debtToIncome: 0.20 + (index % 50) / 100,
     creditScore: 610 + (index % 150),
   })),
-  run("champion-probability-only", 8_000, 1_000, (index) => benchmarkChampionProbability({
+  run("champion-probability-only", 4_000, 500, (index) => benchmarkChampionProbability({
     ...baseline,
     debtToIncome: 0.20 + (index % 50) / 100,
     creditScore: 610 + (index % 150),
   })),
-  run("reference-champion-probability", 2_000, 250, (index) => benchmarkReferenceProbability({
+  run("reference-champion-probability", 4_000, 500, (index) => benchmarkReferenceProbability({
     ...baseline,
     debtToIncome: 0.20 + (index % 50) / 100,
     creditScore: 610 + (index % 150),
