@@ -303,7 +303,7 @@ This is a **tamper-evident hash chain with no distributed-ledger dependency**. A
 
 The public demo must not receive real consumer-credit data or raw private portfolios.
 
-Research reports/artifacts are aggregate or public-source evidence. Runtime protections include strict request schemas, request/body/time bounds, endpoint rate limits, CORS allow-listing, Helmet, optional constant-time API-key authentication, log redaction, sanitized errors, finite-number guards and model-artifact integrity checks.
+Research reports/artifacts are aggregate or public-source evidence. Runtime protections include strict request schemas, request/body/time bounds, key-aware and supplementary-IP rate limits, CORS allow-listing, Helmet, explicit `public-demo` / fail-closed `required` authentication, bounded current+next constant-time API-key rotation, explicit proxy-hop trust, privacy-bounded OpenTelemetry, log redaction, sanitized errors, finite-number guards and model-artifact integrity checks.
 
 A regulated deployment would require stronger IAM, tenant isolation, immutable audit retention and formal data-governance controls.
 
