@@ -280,7 +280,7 @@ External Taiwan and German research datasets use product-specific contracts rath
 
 `model/lineage.py` defines a versioned training-run manifest that hashes the approved model artifact, dependency environment and key governance evidence while carrying source-dataset identity/checksum, split counts, random seeds, feature/data-contract versions, Python version and the governed Git revision. Optional `previousManifest` links create an append-only hash chain across approved manifests.
 
-This is **tamper-evident lineage, not a blockchain**. A successful verification proves that the checked files still match the digests recorded in the approved manifest and that the recorded chain link has not changed. It does **not** prove that the training methodology was correct, that third-party numerical libraries will reproduce bit-for-bit on every platform, or that the model is suitable for regulated use. CI verification is read-only; publication of a new approved lineage manifest remains an explicit reviewed action.
+This is a **tamper-evident hash chain with no distributed-ledger dependency**. A successful verification proves that the checked files still match the digests recorded in the approved manifest and that the recorded chain link has not changed. It does **not** prove that the training methodology was correct, that third-party numerical libraries will reproduce bit-for-bit on every platform, or that the model is suitable for regulated use. CI verification is read-only; publication of a new approved lineage manifest remains an explicit reviewed action.
 
 ## Security / privacy boundary
 
