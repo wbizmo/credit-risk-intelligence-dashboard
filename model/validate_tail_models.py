@@ -6,7 +6,14 @@ import numpy as np
 from scipy.stats import genpareto
 
 from evt import fit_pot_tail
-from portfolio_risk import simulate_portfolio
+from portfolio_risk import (
+    _as_float_vector,
+    _dependency_thresholds,
+    _resolve_backend,
+    _resolve_dependency,
+    _simulate_loss_vector,
+    simulate_portfolio,
+)
 
 
 def _synthetic_evt(shape: float, scale: float) -> dict:
@@ -49,6 +56,31 @@ def main() -> None:
     )
 
     target_expected = float(np.sum(pd * lgd * ead))
+
+    pd_v = _as_float_vector(pd, "pd")
+    lgd_v = _as_float_vector(lgd, "lgd")
+    ead_v = _as_float_vector(ead, "ead")
+    spec = _resolve_dependency(n, 0.20, None)
+    thresholds = _dependency_thresholds(pd_v, spec)
+    loss_vector = _simulate_loss_vector(
+        loss_given_default=lgd_v * ead_v,
+        thresholds=thresholds,
+        spec=spec,
+        scenarios=100_000,
+        chunk_size=2048,
+        seed=3030,
+        backend=_resolve_backend("numpy"),
+    )
+    empirical_var99 = float(np.quantile(loss_vector, 0.99, method="higher"))
+    empirical_tail99 = loss_vector[loss_vector >= empirical_var99]
+    empirical_es99 = float(np.mean(empirical_tail99))
+    evt_comparison = fit_pot_tail(
+        loss_vector,
+        threshold_quantile=0.95,
+        target_quantiles=(0.99,),
+        threshold_candidates=(0.90, 0.95, 0.975),
+    )
+
     report = {
         "status": "research-only; synthetic validation, not Basel/IRB validation",
         "marginalExpectedLoss": {
@@ -63,6 +95,16 @@ def main() -> None:
             "studentTLowRhoDf4Es99": student["expectedShortfall"]["0.99"],
             "highVsLowRatio": high["expectedShortfall"]["0.99"] / low["expectedShortfall"]["0.99"],
             "studentTVsGaussianLowRatio": student["expectedShortfall"]["0.99"] / low["expectedShortfall"]["0.99"],
+        },
+        "empiricalVsEvt": {
+            "scenarios": 100_000,
+            "empiricalVar99": empirical_var99,
+            "empiricalExpectedShortfall99": empirical_es99,
+            "evtStatus": evt_comparison["status"],
+            "evtVar99": evt_comparison["targets"].get("0.99", {}).get("var"),
+            "evtExpectedShortfall99": evt_comparison["targets"].get("0.99", {}).get("expectedShortfall"),
+            "evtThresholdQuantile": evt_comparison["thresholdQuantile"],
+            "note": "Separate estimates are reported side-by-side; EVT never overwrites empirical Monte Carlo.",
         },
         "evtRecovery": [
             _synthetic_evt(-0.10, 2.0),
