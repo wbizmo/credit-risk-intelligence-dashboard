@@ -61,6 +61,20 @@ class MacroStressTests(unittest.TestCase):
         joined = asof_join_macro(["2020-02-15", "2020-03-01"], observations)
         self.assertEqual(joined.tolist(), [4.0, 5.0])
 
+    def test_asof_join_handles_unsorted_queries_and_same_publish_date(self) -> None:
+        observations = [
+            MacroObservation("2020-01-01", "2020-03-01", 1.0),
+            MacroObservation("2020-02-01", "2020-03-01", 2.0),
+            MacroObservation("2019-12-01", "2020-02-01", 0.5),
+        ]
+        joined = asof_join_macro(
+            ["2020-03-02", "2020-01-15", "2020-02-15"],
+            observations,
+        )
+        self.assertEqual(joined[0], 2.0)
+        self.assertTrue(np.isnan(joined[1]))
+        self.assertEqual(joined[2], 0.5)
+
     def test_univariate_logit_recovers_positive_macro_relationship(self) -> None:
         x = np.repeat(np.array([4.0, 6.0, 8.0, 10.0]), 1500)
         p = 1 / (1 + np.exp(-(-4.0 + 0.35 * x)))
@@ -96,6 +110,16 @@ class Ifrs9Tests(unittest.TestCase):
         self.assertEqual(determine_stage(0.04, 0.05, 0, True, policy=policy)["stage"], 3)
         self.assertEqual(determine_stage(0.04, 0.05, 0, False, previous_stage=2, months_since_cure=1, policy=policy)["stage"], 2)
 
+    def test_stage_and_policy_validation_fail_closed_on_invalid_inputs(self) -> None:
+        with self.assertRaisesRegex(ValueError, "finite"):
+            determine_stage(float("nan"), 0.1, 0, False)
+        with self.assertRaisesRegex(ValueError, "non-negative integer"):
+            determine_stage(0.1, 0.1, -1, False)
+        with self.assertRaisesRegex(ValueError, "previous_stage"):
+            determine_stage(0.1, 0.1, 0, False, previous_stage=4)
+        with self.assertRaises(ValueError):
+            EclPolicy(stage2_dpd=90, stage3_dpd=30)
+
     def test_scenario_weighted_ecl_matches_hand_calculation(self) -> None:
         scenarios = {
             "baseline": {"weight": 0.75, "cumulativePd": [0.10, 0.19], "lgd": [0.5, 0.5], "ead": [100.0, 80.0]},
@@ -124,6 +148,12 @@ class CapitalTests(unittest.TestCase):
         self.assertGreater(high["capital"], low["capital"])
         self.assertEqual(low["formulaVersion"], "basel-irb-corporate-research-v1")
         self.assertIn("not regulatory compliance", low["status"].lower())
+
+    def test_irb_and_tail_contribution_domains_fail_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "maturity_years"):
+            irb_corporate_capital(0.02, 0.45, 1000.0, maturity_years=6.0)
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            reconcile_tail_capital([10.0, -1.0], [2.0, 3.0])
 
     def test_economic_capital_keeps_expected_loss_separate(self) -> None:
         result = economic_capital(expected_loss=100.0, tail_loss=260.0, confidence=0.99, tail_measure="VaR")
