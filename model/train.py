@@ -25,6 +25,8 @@ from datasets import (
     download_lendingclub,
     harmonize_lendingclub,
 )
+from drift import build_distribution_shift_evidence
+from explanation_validation import build_explanation_fidelity_report
 from governance import (
     PRIMARY_FEATURE_PROVENANCE,
     build_governance_evidence,
@@ -321,6 +323,15 @@ def main() -> None:
     ks = ks_statistic(y_test, p_test)
     challenger_auc = roc_auc_score(y_test, challenger_test)
 
+    training_bounds = {
+        name: {
+            "p01": round(float(train[name].quantile(0.01)), 6),
+            "p99": round(float(train[name].quantile(0.99)), 6),
+        }
+        for name in FEATURES
+    }
+    reference = {name: round(float(train[name].median()), 6) for name in FEATURES}
+
     governance = build_governance_evidence(
         y_cal,
         p_cal,
@@ -332,9 +343,48 @@ def main() -> None:
         bootstrap_samples=100,
         min_segment_count=500,
     )
+    governance["distributionShift"] = build_distribution_shift_evidence(
+        X_train,
+        X_test,
+        feature_names=FEATURES,
+        expected_dates=train["issueDate"].to_numpy(),
+        actual_dates=test["issueDate"].to_numpy(),
+        expected_segments=fixed_segments(train),
+        actual_segments=fixed_segments(test),
+        seed=SEED,
+    )
+
+    explanation_fidelity = build_explanation_fidelity_report(
+        champion,
+        calibrator,
+        X_test,
+        feature_names=FEATURES,
+        reference=reference,
+        training_bounds=training_bounds,
+        model_name="CRIX-MonoBoost",
+        model_version="2.0.0",
+        expected_model_name="CRIX-MonoBoost",
+        expected_model_version="2.0.0",
+        seed=SEED,
+        sample_size=512,
+        top_k=3,
+        minimum_segment_count=30,
+    )
+    governance["explanationFidelity"] = {
+        "version": explanation_fidelity["version"],
+        "status": explanation_fidelity["status"],
+        "sample": explanation_fidelity["sample"],
+        "overall": explanation_fidelity["overall"],
+        "runtimeImpact": explanation_fidelity["runtimeImpact"],
+        "legalAdverseAction": explanation_fidelity["methods"]["legalAdverseAction"],
+    }
 
     artifact_dir = root / "model" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "crix-explanation-validation-v1.json").write_text(
+        json.dumps(explanation_fidelity, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     artifact_path = artifact_dir / "crix-monoboost-v2.json"
     raw_path = root / "model" / "raw-v2.json"
     base, trees = compact_xgboost_model(champion, raw_path)
@@ -349,15 +399,6 @@ def main() -> None:
     for item in importance:
         item["gain"] = round(item["gain"] / total_gain, 6)
     importance = sorted(importance, key=lambda item: item["gain"], reverse=True)
-
-    training_bounds = {
-        name: {
-            "p01": round(float(train[name].quantile(0.01)), 6),
-            "p99": round(float(train[name].quantile(0.99)), 6),
-        }
-        for name in FEATURES
-    }
-    reference = {name: round(float(train[name].median()), 6) for name in FEATURES}
 
     artifact = {
         "schemaVersion": 2,
