@@ -16,6 +16,7 @@ from data_contracts import (
 )
 from drift import adversarial_validation, build_distribution_shift_evidence, jensen_shannon_divergence
 from explanation_validation import (
+    deterministic_sample_indices,
     sign_agreement,
     spearman_explanation_rank,
     top_k_overlap,
@@ -186,6 +187,13 @@ class ExplanationMetricTests(unittest.TestCase):
         assert correlation is not None
         self.assertGreater(correlation, 0.8)
         self.assertAlmostEqual(sign_agreement(left, right), 0.75)
+
+    def test_fixed_seed_sample_indices_are_deterministic(self) -> None:
+        first = deterministic_sample_indices(1000, 100, 42)
+        second = deterministic_sample_indices(1000, 100, 42)
+        third = deterministic_sample_indices(1000, 100, 43)
+        np.testing.assert_array_equal(first, second)
+        self.assertFalse(np.array_equal(first, third))
 
     def test_metadata_mismatch_fails_before_explanation_report(self) -> None:
         with self.assertRaisesRegex(ValueError, "does not match"):
