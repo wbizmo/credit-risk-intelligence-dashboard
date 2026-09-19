@@ -31,7 +31,7 @@ if (!pyLock.includes("--hash=sha256:")) {
   throw new Error("Python research lock must contain package hashes.");
 }
 
-console.log(JSON.stringify({
+process.stdout.write(`${JSON.stringify({
   npm: { lockfileVersion: npmLock.lockfileVersion, packageVersion: pkg.version },
   python: {
     requirementsSha256: requirementsSha,
@@ -39,4 +39,4 @@ console.log(JSON.stringify({
     generator: pyMeta.generator,
     python: pyMeta.python,
   },
-}, null, 2));
+}, null, 2)}\n`);
