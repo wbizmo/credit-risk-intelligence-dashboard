@@ -1,0 +1,7 @@
+{
+  "generator": "pip-tools==7.6.1",
+  "lockSha256": "949611dd859e550fa2da6aa80145ca141820405df959aa6174622205c8b47eb2",
+  "python": "3.12",
+  "requirementsSha256": "e5439fc56d47cb740da3fa5727be02fad5f1bacfa20ca6570a4abbb8e82a44e2",
+  "schemaVersion": 1
+}
