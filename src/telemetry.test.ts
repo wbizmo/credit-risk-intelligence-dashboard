@@ -60,7 +60,13 @@ describe("OpenTelemetry metrics", () => {
     telemetry.recordRateLimitRejection("/api/v3/risk/batch");
     telemetry.recordScore(result, 2.1);
     telemetry.recordStress({ ...result, decision: "REVIEW", flags: ["LOW_CONFIDENCE"] }, 4.5);
-    telemetry.recordBatch([result, { ...result, decision: "DECLINE" }], 2, 5.5);
+    telemetry.recordBatch(
+      { APPROVE: 1, REVIEW: 0, DECLINE: 1 },
+      2,
+      5.5,
+      result.modelVersion,
+      result.policyVersion,
+    );
 
     expect(await telemetry.forceFlush()).toBe(true);
     const attributes = allAttributes(exporter);
