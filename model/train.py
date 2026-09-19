@@ -11,6 +11,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score, roc_curve
 from sklearn.preprocessing import StandardScaler
 
+from data_contracts import (
+    PRIMARY_HARMONIZED_CONTRACT_VERSION,
+    PRIMARY_SOURCE_CONTRACT_VERSION,
+    validate_chronological_splits,
+)
 from datasets import (
     DATASET_REGISTRY,
     LENDINGCLUB_DOI,
@@ -75,6 +80,7 @@ def split_chronologically(frame):
     for name, cohort in (("train", train), ("calibration", calibration), ("test", test)):
         if len(cohort) < 10_000 or cohort["target"].nunique() != 2:
             raise RuntimeError(f"{name} cohort is too small or lacks both target classes: {len(cohort)} rows")
+    validate_chronological_splits(train, calibration, test)
     return eligible, train, calibration, test
 
 
@@ -402,6 +408,11 @@ def main() -> None:
             "eligibleThrough2017Rows": int(len(eligible)),
             "sourceLock": {"doi": LENDINGCLUB_DOI, "md5": LENDINGCLUB_MD5, "version": "0.1"},
             "splitPolicy": "chronological-origination",
+            "dataContracts": {
+                "source": PRIMARY_SOURCE_CONTRACT_VERSION,
+                "harmonized": PRIMARY_HARMONIZED_CONTRACT_VERSION,
+                "split": "crix-chronological-split-v1",
+            },
             "split": {
                 "train": cohort_summary(train),
                 "calibration": cohort_summary(calibration),
