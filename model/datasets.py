@@ -181,6 +181,7 @@ def _parse_issue_dates(series: pd.Series) -> pd.Series:
 
 def harmonize_lendingclub(path: Path) -> HarmonizedDataset:
     required = ["issue_d", "revenue", "dti_n", "loan_amnt", "fico_n", "emp_length", "Default"]
+    validate_primary_source(pd.read_csv(path, nrows=0))
     raw = pd.read_csv(path, usecols=required, low_memory=False)
     source_rows = len(raw)
     validate_primary_source(raw)
