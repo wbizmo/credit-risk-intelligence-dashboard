@@ -42,6 +42,8 @@ def compare_challengers(models: Iterable[ChallengerMetrics], *, incumbent_id: st
     if not models:
         raise ValueError("at least one model is required")
     by_id = {m.model_id: m for m in models}
+    if len(by_id) != len(models):
+        raise ValueError("model_id values must be unique")
     if incumbent_id not in by_id:
         raise ValueError("incumbent model not found")
     incumbent = by_id[incumbent_id]
@@ -129,7 +131,6 @@ def optimize_exact(
         candidate_id: rank
         for rank, candidate_id in enumerate(sorted(candidate.candidate_id for candidate in eligible))
     }
-    selected = [False] * n
     segment_exposure: dict[str, float] = {}
     segment_heap: list[tuple[float, str]] = []
     selected_count = 0
@@ -162,7 +163,6 @@ def optimize_exact(
             adding = bool(gray & changed)
             sign = 1.0 if adding else -1.0
 
-            selected[index] = adding
             selected_count += 1 if adding else -1
             exposure += sign * candidate.exposure
             expected_loss += sign * candidate.expected_loss
@@ -237,6 +237,8 @@ def optimize_exact(
 
 
 def sorted_equal_exposure_frontier(candidates: Iterable[Candidate], *, budget: float) -> dict:
+    if budget < 0 or not math.isfinite(float(budget)):
+        raise ValueError("budget must be finite and non-negative")
     candidates = [c for c in candidates if c.eligible]
     if not candidates:
         return {"status": "optimal", "selectedIds": [], "expectedReturn": 0.0, "exposure": 0.0, "method": "sorted-prefix"}
@@ -244,8 +246,6 @@ def sorted_equal_exposure_frontier(candidates: Iterable[Candidate], *, budget: f
     if len(exposures) != 1:
         raise ValueError("sorted equal-exposure frontier requires identical candidate exposures")
     exposure = candidates[0].exposure
-    if budget < 0 or not math.isfinite(float(budget)):
-        raise ValueError("budget must be finite and non-negative")
     count = min(len(candidates), int(math.floor(budget / exposure + 1e-12)))
     ranked = sorted(candidates, key=lambda c: (-c.expected_return, c.expected_loss, c.candidate_id))
     selected = ranked[:count]
