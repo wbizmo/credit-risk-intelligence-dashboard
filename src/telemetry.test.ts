@@ -226,7 +226,7 @@ describe("OpenTelemetry metrics", () => {
     await telemetry.shutdown();
   });
 
-  it("contains exporter failure outside request semantics", async () => {
+  it("contains exporter failure outside real score request semantics", async () => {
     const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
     Object.defineProperty(exporter, "export", {
       value: () => {
@@ -237,8 +237,45 @@ describe("OpenTelemetry metrics", () => {
       { enabled: true, exportIntervalMs: 60_000 },
       { exporter },
     );
-    telemetry.recordHttp("GET", "/health", 200, 1);
+    const config: AppConfig = {
+      host: "127.0.0.1",
+      port: 0,
+      logLevel: "silent",
+      rateLimitMax: 1000,
+      authMode: "public-demo",
+      apiKeys: [],
+      trustProxyHops: 0,
+      telemetryEnabled: false,
+      otelExportIntervalMs: 60_000,
+      corsOrigins: [],
+      environment: "test",
+    };
+    const app = await buildApp(config, { telemetry });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      payload: {
+        annualIncome: 85_000,
+        debtToIncome: 0.28,
+        creditScore: 720,
+        creditUtilization: 0.3,
+        delinquencies24m: 0,
+        inquiries6m: 1,
+        oldestTradeMonths: 96,
+        openAccounts: 7,
+        loanAmount: 24_000,
+        termMonths: 36,
+        employmentYears: 5,
+        cashBufferMonths: 3,
+        onTimePaymentRate: 0.98,
+        incomeStability: 0.82,
+        recentCreditGrowth: 0.08,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().result.modelVersion).toContain("CRIX-MonoBoost");
     expect(await telemetry.forceFlush()).toBe(false);
+    await app.close();
     await telemetry.shutdown();
   });
 });
