@@ -21,7 +21,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund --legacy-peer-deps
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
       - run: npm run verify
       - name: Capture risk-engine hot-path benchmark evidence
         run: npm run benchmark:risk
@@ -38,8 +40,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install governance and research-adapter test dependencies
-        run: pip install "numpy>=2.0,<3" "pandas>=2.2,<3" "scipy>=1.14,<2" "scikit-learn>=1.6,<2"
+          cache: pip
+          cache-dependency-path: model/requirements.lock
+      - name: Install governed Python environment
+        run: python -m pip install --require-hashes -r model/requirements.lock
       - name: Run CRIX model-governance tests
         run: python -m unittest discover -s model -p 'test_*.py' -v
       - name: Verify committed training lineage read-only
@@ -54,3 +58,67 @@ jobs:
         run: python model/benchmark_portfolio.py --quick
       - name: Capture Batch B synthetic tail validation
         run: python model/validate_tail_models.py
+
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Reproduce Node dependency graph from lock
+        run: npm ci --ignore-scripts --no-audit --no-fund --legacy-peer-deps
+      - name: Verify dependency lock provenance
+        run: npm run verify:locks
+      - name: Prove lock drift fails closed
+        run: |
+          cp package.json /tmp/package.json
+          cp model/requirements.txt /tmp/requirements.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          package = json.loads(Path("package.json").read_text())
+          package["version"] = "0.0.0-drift-test"
+          Path("package.json").write_text(json.dumps(package, indent=2) + "\n")
+          PY
+          if npm run verify:locks; then
+            echo "Expected npm lock drift verification to fail."
+            exit 1
+          fi
+          cp /tmp/package.json package.json
+          printf '\n# deliberate-ci-drift\n' >> model/requirements.txt
+          if npm run verify:locks; then
+            echo "Expected Python requirements/lock drift verification to fail."
+            exit 1
+          fi
+          cp /tmp/requirements.txt model/requirements.txt
+          npm run verify:locks
+      - name: Audit live Node production dependencies
+        run: npm run audit:node
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Python audit tool
+        run: python -m pip install "pip-audit==2.10.1"
+      - name: Capture offline research dependency audit evidence
+        id: python-audit
+        continue-on-error: true
+        run: pip-audit -r model/requirements.lock --require-hashes --format=json --output=pip-audit.json
+      - name: Explain Python audit policy
+        if: always()
+        run: |
+          echo "Python model/research advisories are evidence for explicit reachability/environment triage."
+          echo "They do not silently retrain/promote the champion and are not treated as live Fastify exposure by default."
+          echo "pip-audit outcome: ${{ steps.python-audit.outcome }}"
+          python scripts/summarize_pip_audit.py
+      - name: Upload Python audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crix-python-dependency-audit-${{ github.run_id }}
+          path: pip-audit.json
+          if-no-files-found: warn

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { buildApp } from "../app";
 import type { AppConfig } from "../config";
+import { createInMemoryTelemetry } from "../telemetry";
 import { summarizeDurations } from "./benchmark-utils";
 import type { ApplicationInput, StressSeverity } from "./types";
 
@@ -24,6 +25,7 @@ interface ScenarioDefinition {
   apiKey?: string;
   routeRateLimitScale?: number;
   requireStatus?: number;
+  telemetryEnabled?: boolean;
 }
 
 interface ScenarioResult {
@@ -78,7 +80,11 @@ const baseConfig = (apiKey?: string): AppConfig => ({
   port: 0,
   logLevel: "silent",
   rateLimitMax: 100_000,
-  ...(apiKey ? { apiKey } : {}),
+  authMode: apiKey ? "required" : "public-demo",
+  apiKeys: apiKey ? [apiKey] : [],
+  trustProxyHops: 0,
+  telemetryEnabled: false,
+  otelExportIntervalMs: 60_000,
   corsOrigins: [],
   environment: "test",
 });
@@ -86,8 +92,10 @@ const baseConfig = (apiKey?: string): AppConfig => ({
 const finiteMs = (nanoseconds: number): number => Number.isFinite(nanoseconds) ? nanoseconds / 1_000_000 : 0;
 
 async function runScenario(definition: ScenarioDefinition): Promise<ScenarioResult> {
+  const testTelemetry = definition.telemetryEnabled ? createInMemoryTelemetry() : undefined;
   const app = await buildApp(baseConfig(definition.apiKey), {
     routeRateLimitScale: definition.routeRateLimitScale ?? 100,
+    ...(testTelemetry ? { telemetry: testTelemetry.telemetry } : {}),
   });
   const origin = await app.listen({ host: "127.0.0.1", port: 0 });
   const histogram = monitorEventLoopDelay({ resolution: 10 });
@@ -150,6 +158,10 @@ async function runScenario(definition: ScenarioDefinition): Promise<ScenarioResu
   const cpu = process.cpuUsage(cpuBefore);
   const elu = performance.eventLoopUtilization(eluBefore);
   await app.close();
+  if (testTelemetry) {
+    await testTelemetry.telemetry.forceFlush();
+    await testTelemetry.telemetry.shutdown();
+  }
 
   const summary = summarizeDurations(latencies, elapsedMs);
   const non2xxCount = Object.entries(statusCounts)
@@ -289,6 +301,36 @@ async function main(): Promise<void> {
     body: score,
   }));
 
+  const telemetryDisabled = await runScenario({
+    name: "telemetry-disabled-score",
+    method: "POST",
+    path: "/api/v3/risk/score",
+    concurrency: 8,
+    requests: quick ? 80 : 500,
+    expectedStatuses: [200],
+    body: score,
+    telemetryEnabled: false,
+  });
+  const telemetryEnabled = await runScenario({
+    name: "telemetry-enabled-score",
+    method: "POST",
+    path: "/api/v3/risk/score",
+    concurrency: 8,
+    requests: quick ? 80 : 500,
+    expectedStatuses: [200],
+    body: score,
+    telemetryEnabled: true,
+  });
+  const telemetryOverhead = {
+    disabledMeanMs: telemetryDisabled.meanMs,
+    enabledMeanMs: telemetryEnabled.meanMs,
+    meanRatio: telemetryDisabled.meanMs > 0 ? telemetryEnabled.meanMs / telemetryDisabled.meanMs : 0,
+    disabledP95Ms: telemetryDisabled.p95Ms,
+    enabledP95Ms: telemetryEnabled.p95Ms,
+    p95Ratio: telemetryDisabled.p95Ms > 0 ? telemetryEnabled.p95Ms / telemetryDisabled.p95Ms : 0,
+    semantics: "Loopback in-memory exporter comparison; evidence only, not an external collector SLO.",
+  };
+
   const benchmarkApiKey = process.env.CRIX_BENCH_API_KEY?.trim();
   let authenticatedProfile: { status: "executed"; result: ScenarioResult } | { status: "skipped"; reason: string };
 
@@ -326,6 +368,7 @@ async function main(): Promise<void> {
       productionRateLimitProfileUsesScale: 1,
     },
     results,
+    telemetryComparison: telemetryOverhead,
     authenticatedProfile,
   }, null, 2));
 }

@@ -14,24 +14,43 @@ CRIX v3 is a public engineering/model-risk demonstration. It is deliberately sta
 - Helmet security headers;
 - credential-header log redaction;
 - CORS disabled unless explicitly allow-listed;
-- optional `x-api-key` protection for `/api/v3/*`;
-- constant-time API-key comparison;
+- explicit `public-demo` and fail-closed `required` authentication modes;
+- bounded current+next API-key rotation for `/api/v3/*`;
+- SHA-256 fixed-length constant-time API-key comparison with no key/hash logging;
+- reverse-proxy trust disabled by default and bounded by an explicit hop count;
+- authenticated rate-limit buckets use only a bounded key slot; unauthenticated/invalid credentials fall back to client IP;
 - generic 5xx responses with no stack trace disclosure;
 - finite-number checks inside the model engine;
 - bounded model-tree traversal and artifact integrity checks;
 - no borrower-name field and no database.
 
-## API key mode
+## Runtime authentication profiles
 
-Set `CRIX_API_KEY` to a high-entropy secret. When configured, every `/api/v3/*` request must include:
+CRIX uses an explicit `CRIX_AUTH_MODE`.
+
+### `public-demo`
+
+This preserves the public reviewer/demo posture. `/api/v3/*` is callable without credentials, while rate limits, body/time bounds and all normal validation remain active. API keys must not be configured in this mode.
+
+### `required`
+
+This is the hardened deployment posture. Startup fails closed if there is no acceptable high-entropy key. Configure `CRIX_API_KEYS` as a bounded comma-separated set of at most two active values so a current key and next key can overlap during rotation. Keys must be unique, at least 24 characters and non-trivial. `CRIX_API_KEY` remains a single-key compatibility alias only when `CRIX_AUTH_MODE` is explicitly set.
+
+Every protected `/api/v3/*` request must include:
 
 ```text
 x-api-key: <secret>
 ```
 
-Health, readiness and API documentation remain public so infrastructure can probe the service and reviewers can inspect the contract.
+Health, readiness and API documentation remain public for probes and contract inspection. Credential values and their hashes are never used as logs or metric labels.
 
-For a real multi-tenant product, replace this simple deployment-level key with gateway/IAM-backed authentication and authorization, key rotation, tenant quotas, audit trails and managed secret controls.
+## Reverse proxies and client IP
+
+Fastify proxy trust is **off by default**. `CRIX_TRUST_PROXY_HOPS` accepts only a bounded hop count (0–4). Configure the exact topology used by the deployment; do not enable blanket trust for arbitrary forwarding chains.
+
+With trust disabled, spoofed `x-forwarded-for` input does not become the rate-limit client identity. With one trusted hop, the immediate trusted reverse proxy may supply the originating client address. Changing proxy topology requires retesting this assumption.
+
+For a real multi-tenant product, replace the deployment-level key with gateway/IAM-backed authentication and authorization, tenant-scoped quotas, managed secret rotation and immutable audit controls.
 
 ## Data handling
 
@@ -69,9 +88,25 @@ The Taiwan and German artifacts/benchmarks are intentionally not blended into th
 
 See `MODEL_CARD.md` and `model/TRAINING_REPORT.md` for model-risk details.
 
+## Observability privacy and cardinality
+
+OpenTelemetry metrics are disabled by default and configured independently from scoring. When enabled, export is periodic/background; a collector failure does not fail a score request.
+
+Allowed labels are deliberately bounded: route template, HTTP method/status class, model version, policy version, decision, fixed operation, disagreement bucket and bounded champion feature name for OOD counts. The instrumentation must not emit application/request IDs, raw IP addresses, headers, API keys or hashes, borrower feature values, exact PD/loan/income values, or arbitrary exception text.
+
+Operational aggregates include request/error/auth/rate-limit counts, request and score/stress/batch latency, batch size, decision/OOD/low-confidence/disagreement aggregates, readiness, RSS/heap, uptime and event-loop indicators. CRIX does not add borrower-level traces or persistence.
+
 ## Dependency and CI policy
 
-Every change to `main` must pass lint, TypeScript checking, unit/API tests and a production build. Real-data training has a separate reproducibility workflow that downloads the registered public sources, trains/evaluates the artifacts and commits only the derived evidence.
+Node governed builds use the committed npm lock with `npm ci`; CI does not rewrite it. Production dependency advisories are checked separately from install with a **high** severity blocking threshold. Dev-only tooling advisories are reviewed separately rather than being treated as runtime exposure automatically.
+
+The human-readable Python constraints remain in `model/requirements.txt`, while governed model validation installs the exact hash-pinned `model/requirements.lock`. `model/requirements.lock.meta.json` binds the lock to its source constraints and generator version, and the training-lineage manifest records the exact lock SHA-256.
+
+Python model/research dependency audits are visible CI evidence but are triaged by reachability and environment: live-runtime, development-only, offline research-only, transitive/no-reachable-path, or no-upstream-fix. An advisory does not automatically retrain or promote a champion. Scientific dependency changes that may affect numerics require the ordinary model-validation/reproduction gates before approval.
+
+Workflow actions use maintained major versions. Dependency/lock updates are explicit reviewed changes; CI never silently bumps dependencies or publishes a newly retrained champion.
+
+Every change to `main` must pass lint, TypeScript checking, unit/API tests and a production build. Real-data training has a separate reproducibility workflow that downloads registered public sources, verifies immutable source checksums and validates derived evidence.
 
 Releases are produced from the version in `package.json` only after code reaches `main`.
 

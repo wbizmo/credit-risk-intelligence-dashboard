@@ -18,10 +18,10 @@
     "version": "0.1"
   },
   "dependencyLock": {
-    "path": "model/requirements.txt",
-    "sha256": "e5439fc56d47cb740da3fa5727be02fad5f1bacfa20ca6570a4abbb8e82a44e2",
+    "path": "model/requirements.lock",
+    "sha256": "521edbb18d7b403ce7ef8a0ae982454c8d607bf7adca7f3a5444a9e70e83bd06",
     "scope": "v3.2-lineage-validation-environment",
-    "kind": "declared-requirements-specification"
+    "kind": "sha256-pinned-research-lock"
   },
   "evidence": [
     {

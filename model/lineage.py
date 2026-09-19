@@ -141,7 +141,7 @@ def build_training_manifest(
             "path": _relative_path(root, dependency_lock_path),
             "sha256": sha256_file(dependency_lock_path),
             "scope": "v3.2-lineage-validation-environment",
-            "kind": "declared-requirements-specification",
+            "kind": "sha256-pinned-research-lock",
         },
         "dataset": {
             "sourceId": source.get("id"),
@@ -227,7 +227,7 @@ def validate_manifest_schema(manifest: Mapping[str, Any]) -> None:
     _validate_sha256(lock.get("sha256"), "dependencyLock.sha256")
     if lock.get("scope") != "v3.2-lineage-validation-environment":
         raise LineageViolation("unsupported dependencyLock.scope")
-    if lock.get("kind") != "declared-requirements-specification":
+    if lock.get("kind") != "sha256-pinned-research-lock":
         raise LineageViolation("unsupported dependencyLock.kind")
     _validate_relative_text(artifact.get("path"), "artifact.path")
     _validate_sha256(artifact.get("sha256"), "artifact.sha256")
