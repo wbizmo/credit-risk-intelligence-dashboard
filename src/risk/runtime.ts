@@ -104,6 +104,7 @@ function validateTree(tree: ModelTree, treeIndex: number, featureCount: number):
 
     if (!Number.isInteger(left) || !Number.isInteger(right)) throw new Error(`Model tree ${treeIndex} has a non-integer child index`);
     if (!Number.isInteger(feature)) throw new Error(`Model tree ${treeIndex} has a non-integer feature index`);
+    if (feature < 0 || feature >= featureCount) throw new Error(`Model tree ${treeIndex} has an out-of-range feature index`);
     if (defaultLeft !== 0 && defaultLeft !== 1) throw new Error(`Model tree ${treeIndex} has an invalid default-left flag`);
     assertFinite(threshold, `Model tree ${treeIndex} has a non-finite threshold/leaf`);
 
@@ -116,7 +117,6 @@ function validateTree(tree: ModelTree, treeIndex: number, featureCount: number):
     if (left < 0 || right < 0 || left >= nodeCount || right >= nodeCount) {
       throw new Error(`Model tree ${treeIndex} has an out-of-range child index`);
     }
-    if (feature < 0 || feature >= featureCount) throw new Error(`Model tree ${treeIndex} has an out-of-range feature index`);
   }
 
   const state = new Array<number>(nodeCount).fill(0);
