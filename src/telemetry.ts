@@ -16,7 +16,13 @@ export interface Telemetry {
   recordRateLimitRejection(route: string): void;
   recordScore(result: RiskResult, durationMs: number): void;
   recordStress(result: RiskResult, durationMs: number): void;
-  recordBatch(results: readonly RiskResult[], batchSize: number, durationMs: number): void;
+  recordBatch(
+    decisionCounts: Readonly<Record<RiskResult["decision"], number>>,
+    batchSize: number,
+    durationMs: number,
+    modelVersion: string,
+    policyVersion: string,
+  ): void;
   setReadiness(ready: boolean, modelVersion?: string): void;
   forceFlush(): Promise<boolean>;
   shutdown(): Promise<void>;
@@ -137,10 +143,13 @@ export function createTelemetry(settings: TelemetrySettings, options: TelemetryF
       stressDuration.record(durationMs, { model_version: result.modelVersion, policy_version: result.policyVersion });
       recordAssessment(result, "stress");
     },
-    recordBatch(results, size, durationMs) {
+    recordBatch(decisionCounts, size, durationMs, modelVersion, policyVersion) {
       batchSize.record(size);
-      batchDuration.record(durationMs);
-      for (const result of results) recordAssessment(result, "batch");
+      batchDuration.record(durationMs, { model_version: modelVersion, policy_version: policyVersion });
+      const shared = { operation: "batch", model_version: modelVersion, policy_version: policyVersion };
+      decisions.add(decisionCounts.APPROVE, { ...shared, decision: "APPROVE" });
+      decisions.add(decisionCounts.REVIEW, { ...shared, decision: "REVIEW" });
+      decisions.add(decisionCounts.DECLINE, { ...shared, decision: "DECLINE" });
     },
     setReadiness(ready, modelVersion = "unknown") {
       readiness = ready ? 1 : 0;
