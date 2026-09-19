@@ -82,6 +82,12 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     routerOptions: { maxParamLength: 256 },
   });
 
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("x-request-id", request.id);
+    reply.header("cache-control", "no-store");
+    if (telemetry.enabled) requestStarts.set(request, performance.now());
+  });
+
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(rateLimit, {
     max: config.rateLimitMax,
@@ -161,10 +167,6 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
   telemetry.setReadiness(modelReady, readinessModel);
 
   app.addHook("onRequest", async (request, reply) => {
-    reply.header("x-request-id", request.id);
-    reply.header("cache-control", "no-store");
-    if (telemetry.enabled) requestStarts.set(request, performance.now());
-
     if (config.authMode !== "required" || !protectedRoute(request)) return;
     const supplied = apiKeyFromHeader(request.headers["x-api-key"]);
     const match = supplied ? matchApiKey(supplied, config.apiKeys) : { matched: false };
