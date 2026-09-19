@@ -232,24 +232,11 @@ def validate_primary_harmonized(
     for invariant, valid in checks.items():
         invalid_count = int((~np.asarray(valid, dtype=bool)).sum())
         if invalid_count:
-            values = None
-            if invariant.startswith("debtToIncome"):
-                values = frame["debtToIncome"].to_numpy(dtype=float)
-            elif invariant.startswith("creditScore"):
-                values = frame["creditScore"].to_numpy(dtype=float)
-            elif invariant.startswith("employmentYears"):
-                values = frame["employmentYears"].to_numpy(dtype=float)
-            summary = (
-                {"min": float(np.min(values)), "max": float(np.max(values))}
-                if values is not None and values.size
-                else None
-            )
             raise ContractViolation(
                 contract=contract,
                 version=version,
                 invariant=invariant,
                 invalid_count=invalid_count,
-                summary=summary,
             )
 
     issue_date = pd.to_datetime(frame["issueDate"], errors="coerce")
