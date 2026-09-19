@@ -121,6 +121,8 @@ The versioned `crix-distribution-shift-v1` review policy uses adversarial-AUC re
 
 Fixed credit-score, DTI, loan-to-income and employment-tenure segments are evaluated when both populations have sufficient support; weak segments return `insufficient-data`. The report contains counts and aggregate statistics only—never borrower rows, IDs or exact feature vectors. Adversarial validation measures how distinguishable two feature populations are; it does not by itself prove that the credit model is invalid or establish causality.
 
+On the v3.2 governed real-data validation run, the bounded adversarial classifier produced **AUC 0.5593** for training versus later calibration+OOT observations. Under the versioned review policy, the aggregate shift status was **pass**, and all four champion features (`debtToIncome`, `loanToIncome`, `creditScore`, `employmentYears`) had feature-level status **pass**. This is evidence for that historical split only, not a guarantee of present-day or cross-population stability.
+
 ## Calibration
 
 The monotonic XGBoost champion is trained on the train cohort. A separate Platt/logistic calibration layer is fitted only on 2016 originations, then evaluated on the later 2017 OOT cohort.
@@ -162,6 +164,8 @@ The API returns local model reason codes from bounded counterfactual sensitivity
 CRIX v3.2 adds **offline explanation-fidelity validation** in `model/explanation_validation.py`. A fixed-seed governed OOT sample is explained independently with SHAP TreeExplainer and compared with the live-compatible local champion-sensitivity method using top-k feature overlap/disagreement, absolute-rank correlation, sign/direction agreement and stability under small valid perturbations. Evidence is also aggregated by credit-score band, DTI band, loan-to-income band, PD band and in-distribution/OOD status, with `insufficient-data` for weak segments.
 
 SHAP remains outside the Fastify request path, so this validation adds no live latency or Python dependency. The generated `model/artifacts/crix-explanation-validation-v1.json` is aggregate-only and version-bound to CRIX-MonoBoost 2.0.0; report generation fails if champion identity metadata does not match.
+
+On the governed v3.2 OOT sample (**n=512**, fixed seed 42), the offline comparison measured mean top-3 feature overlap **0.9759**, top-3 disagreement rate **7.23%**, mean absolute-rank correlation **0.9141**, mean sign agreement **0.9533**, and mean perturbation top-3 stability **0.9876**. These values support broad consistency between the two explanation methods on this sample while leaving the semantic/legal boundaries below unchanged.
 
 SHAP values are **model-explanation evidence only**. They are not automatically legal adverse-action reasons, do not replace deterministic `policyReasons`, and do not establish ECOA/fair-lending compliance. Counterfactuals remain model-analysis aids, not promises of approval and not legally sufficient adverse-action reasons.
 
