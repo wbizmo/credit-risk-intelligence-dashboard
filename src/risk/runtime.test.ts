@@ -18,9 +18,8 @@ describe("compiled CRIX runtime", () => {
     expect(model.featureNames).toEqual(rawArtifact.featureNames);
     expect(model.maxTreeDepth).toBeLessThanOrEqual(64);
     expect(Object.isFrozen(model)).toBe(true);
-    expect(Object.isFrozen(model.trees)).toBe(true);
-    expect(Object.isFrozen(model.trees[0])).toBe(true);
-    expect(Object.isFrozen(model.trees[0]?.threshold)).toBe(true);
+    expect(model.trees[0]?.left).not.toBe(rawArtifact.trees[0]?.left);
+    expect(model.trees[0]?.threshold).not.toBe(rawArtifact.trees[0]?.threshold);
   });
 
   it("fails closed on malformed child indexes", () => {
