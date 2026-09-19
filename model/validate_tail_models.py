@@ -10,8 +10,8 @@ from portfolio_risk import simulate_portfolio
 
 
 def _synthetic_evt(shape: float, scale: float) -> dict:
-    body = np.linspace(0.0, 10.0, 9001)
     count = 1999
+    body = np.linspace(0.0, 10.0, 10_000 - count)
     u = (np.arange(count, dtype=float) + 0.5) / count
     losses = np.concatenate((body, 10.0 + genpareto.ppf(u, c=shape, scale=scale)))
     fit = fit_pot_tail(
