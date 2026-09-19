@@ -184,7 +184,7 @@ describe("CRIX HTTP API", () => {
     expect(response?.statusCode).toBe(429);
     expect(response?.json()).toMatchObject({
       error: "RATE_LIMITED",
-      message: "Too many requests. Retry after the current rate-limit window.",
+      message: "Too many requests.",
     });
     await app.close();
   });
