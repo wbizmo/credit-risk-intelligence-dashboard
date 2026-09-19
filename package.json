@@ -1,6 +1,6 @@
 {
   "name": "credit-risk-intelligence-api",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "private": true,
   "description": "CRIX is a stateless, explainable credit-risk decisioning API with real-world calibrated default risk, expected loss, stress testing, model governance, and OpenAPI documentation.",
   "engines": {
