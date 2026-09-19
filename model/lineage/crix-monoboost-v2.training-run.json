@@ -1,0 +1,77 @@
+{
+  "artifact": {
+    "path": "model/artifacts/crix-monoboost-v2.json",
+    "sha256": "1ed978ccc0f59420555d408d97c5f8909e953770709f1fed5ca482e99e649075"
+  },
+  "createdAt": "2026-09-19T00:00:00+00:00",
+  "dataContractVersion": "crix-lendingclub-harmonized-v1",
+  "dataset": {
+    "doi": "10.5281/zenodo.11295916",
+    "rows": {
+      "calibration": 274200,
+      "test": 157119,
+      "train": 786730
+    },
+    "sourceId": "lendingclub-granting-0.1",
+    "sourceMd5": "b019384d6bc65bf2a3e839362e4ff502",
+    "sourceSha256": "207d65b2712f775a91404496ab27c786ac0da6b0f977f849e6d5d8149e925acc",
+    "version": "0.1"
+  },
+  "dependencyLock": {
+    "path": "model/requirements.txt",
+    "sha256": "e5439fc56d47cb740da3fa5727be02fad5f1bacfa20ca6570a4abbb8e82a44e2",
+    "scope": "v3.2-lineage-validation-environment",
+    "kind": "declared-requirements-specification"
+  },
+  "evidence": [
+    {
+      "path": "MODEL_CARD.md",
+      "sha256": "513c60ee5e6a85e3f1d269c3955029299eac38c2265f2142a73b5940d5baea45"
+    },
+    {
+      "path": "model/TRAINING_REPORT.md",
+      "sha256": "be80c61c55f1b3190ba5d68e8d5e2cc09b86b85b7c3120e2e8122dbe0671031c"
+    }
+  ],
+  "featureContractVersion": "crix-granting-features-v1",
+  "gitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+  "previousManifest": null,
+  "privacy": "aggregate counts, versions and hashes only; no borrower rows, IDs, secrets or absolute paths",
+  "pythonVersion": "3.12.14",
+  "reproducibilityClass": "tamper-evident retrospective lineage for the approved artifact plus v3.2 validation evidence; the original manifest environment hash is preserved separately, and deterministic seeds/hashes do not guarantee bitwise retraining across numerical-library/platform changes",
+  "runId": "crix-v3.2-lineage-initial",
+  "runtimeManifest": {
+    "artifactSha256": "1ed978ccc0f59420555d408d97c5f8909e953770709f1fed5ca482e99e649075",
+    "modelId": "CRIX-MonoBoost@2.0.0",
+    "trainingGitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
+    "trainingRunId": "34721148952",
+    "trainingEnvironmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65"
+  },
+  "schemaVersion": 1,
+  "seeds": {
+    "governance": 42,
+    "training": 42
+  },
+  "split": {
+    "calibration": {
+      "defaultRate": 0.227112,
+      "end": "2016-12-01",
+      "samples": 274200,
+      "start": "2016-01-01"
+    },
+    "test": {
+      "defaultRate": 0.224187,
+      "end": "2017-12-01",
+      "samples": 157119,
+      "start": "2017-01-01"
+    },
+    "train": {
+      "defaultRate": 0.181736,
+      "end": "2015-12-01",
+      "samples": 786730,
+      "start": "2007-06-01"
+    }
+  },
+  "gitCommitScope": "approved-artifact-origin-code-revision",
+  "pythonVersionScope": "v3.2-lineage-validation-environment"
+}

@@ -11,6 +11,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score, roc_curve
 from sklearn.preprocessing import StandardScaler
 
+from data_contracts import (
+    PRIMARY_HARMONIZED_CONTRACT_VERSION,
+    PRIMARY_SOURCE_CONTRACT_VERSION,
+    validate_chronological_splits,
+)
 from datasets import (
     DATASET_REGISTRY,
     LENDINGCLUB_DOI,
@@ -19,7 +24,10 @@ from datasets import (
     MONOTONE,
     download_lendingclub,
     harmonize_lendingclub,
+    md5sum,
 )
+from drift import build_distribution_shift_evidence
+from explanation_validation import build_explanation_fidelity_report
 from governance import (
     PRIMARY_FEATURE_PROVENANCE,
     build_governance_evidence,
@@ -75,6 +83,7 @@ def split_chronologically(frame):
     for name, cohort in (("train", train), ("calibration", calibration), ("test", test)):
         if len(cohort) < 10_000 or cohort["target"].nunique() != 2:
             raise RuntimeError(f"{name} cohort is too small or lacks both target classes: {len(cohort)} rows")
+    validate_chronological_splits(train, calibration, test)
     return eligible, train, calibration, test
 
 
@@ -284,6 +293,12 @@ def main() -> None:
             raise FileNotFoundError(args.data)
         download_lendingclub(args.data)
 
+    source_md5 = md5sum(args.data)
+    if source_md5 != LENDINGCLUB_MD5:
+        raise RuntimeError(
+            f"LendingClub source checksum mismatch: expected {LENDINGCLUB_MD5}, got {source_md5}"
+        )
+
     dataset = harmonize_lendingclub(args.data)
     eligible, train, calibration, test = split_chronologically(dataset.frame)
 
@@ -315,6 +330,15 @@ def main() -> None:
     ks = ks_statistic(y_test, p_test)
     challenger_auc = roc_auc_score(y_test, challenger_test)
 
+    training_bounds = {
+        name: {
+            "p01": round(float(train[name].quantile(0.01)), 6),
+            "p99": round(float(train[name].quantile(0.99)), 6),
+        }
+        for name in FEATURES
+    }
+    reference = {name: round(float(train[name].median()), 6) for name in FEATURES}
+
     governance = build_governance_evidence(
         y_cal,
         p_cal,
@@ -326,9 +350,64 @@ def main() -> None:
         bootstrap_samples=100,
         min_segment_count=500,
     )
+    shift_population = np.vstack((X_cal, X_test))
+    shift_dates = np.concatenate((calibration["issueDate"].to_numpy(), test["issueDate"].to_numpy()))
+    calibration_segments = fixed_segments(calibration)
+    test_segments = fixed_segments(test)
+    shift_segments = {
+        name: np.concatenate((calibration_segments[name], test_segments[name]))
+        for name in calibration_segments
+    }
+    governance["distributionShift"] = build_distribution_shift_evidence(
+        X_train,
+        shift_population,
+        feature_names=FEATURES,
+        expected_dates=train["issueDate"].to_numpy(),
+        actual_dates=shift_dates,
+        expected_segments=fixed_segments(train),
+        actual_segments=shift_segments,
+        seed=SEED,
+    )
+    governance["distributionShift"]["populations"] = {
+        "reference": "chronological training cohort",
+        "comparison": "later calibration + out-of-time cohorts",
+    }
+
+    explanation_fidelity = build_explanation_fidelity_report(
+        champion,
+        calibrator,
+        X_test,
+        feature_names=FEATURES,
+        reference=reference,
+        training_bounds=training_bounds,
+        model_name="CRIX-MonoBoost",
+        model_version="2.0.0",
+        expected_model_name="CRIX-MonoBoost",
+        expected_model_version="2.0.0",
+        seed=SEED,
+        sample_size=512,
+        top_k=3,
+        minimum_segment_count=30,
+    )
+    governance["explanationFidelity"] = {
+        "version": explanation_fidelity["version"],
+        "status": explanation_fidelity["status"],
+        "sample": explanation_fidelity["sample"],
+        "overall": explanation_fidelity["overall"],
+        "runtimeImpact": explanation_fidelity["runtimeImpact"],
+        "legalAdverseAction": explanation_fidelity["methods"]["legalAdverseAction"],
+    }
 
     artifact_dir = root / "model" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "crix-explanation-validation-v1.json").write_text(
+        json.dumps(explanation_fidelity, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (artifact_dir / "crix-distribution-shift-v1.json").write_text(
+        json.dumps(governance["distributionShift"], indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     artifact_path = artifact_dir / "crix-monoboost-v2.json"
     raw_path = root / "model" / "raw-v2.json"
     base, trees = compact_xgboost_model(champion, raw_path)
@@ -343,15 +422,6 @@ def main() -> None:
     for item in importance:
         item["gain"] = round(item["gain"] / total_gain, 6)
     importance = sorted(importance, key=lambda item: item["gain"], reverse=True)
-
-    training_bounds = {
-        name: {
-            "p01": round(float(train[name].quantile(0.01)), 6),
-            "p99": round(float(train[name].quantile(0.99)), 6),
-        }
-        for name in FEATURES
-    }
-    reference = {name: round(float(train[name].median()), 6) for name in FEATURES}
 
     artifact = {
         "schemaVersion": 2,
@@ -402,6 +472,11 @@ def main() -> None:
             "eligibleThrough2017Rows": int(len(eligible)),
             "sourceLock": {"doi": LENDINGCLUB_DOI, "md5": LENDINGCLUB_MD5, "version": "0.1"},
             "splitPolicy": "chronological-origination",
+            "dataContracts": {
+                "source": PRIMARY_SOURCE_CONTRACT_VERSION,
+                "harmonized": PRIMARY_HARMONIZED_CONTRACT_VERSION,
+                "split": "crix-chronological-split-v1",
+            },
             "split": {
                 "train": cohort_summary(train),
                 "calibration": cohort_summary(calibration),

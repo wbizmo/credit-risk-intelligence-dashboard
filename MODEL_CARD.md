@@ -113,6 +113,16 @@ The governance pipeline also generates:
 - `insufficient-data` instead of fabricated metrics for weakly supported segments;
 - observed-cohort policy backtests from cached predictions.
 
+### v3.2 distribution-shift governance
+
+CRIX v3.2 complements PSI with a separate aggregate-only distribution-shift report over the approved champion feature space. A bounded standardized logistic classifier performs fixed-seed out-of-fold adversarial validation between the chronological training cohort and the later calibration+OOT population. Feature-level evidence also includes Jensen-Shannon divergence, Wasserstein distance, p01/p99 support-breach rate, missingness-rate movement and quantile movement.
+
+The versioned `crix-distribution-shift-v1` review policy uses adversarial-AUC review bands of **0.65 warning / 0.75 material-shift**, PSI bands of **0.10 / 0.25**, Jensen-Shannon bands of **0.05 / 0.10**, and support-breach bands of **5% / 10%**. These thresholds create review evidence only: they do **not** retrain, promote, retire or replace a model automatically.
+
+Fixed credit-score, DTI, loan-to-income and employment-tenure segments are evaluated when both populations have sufficient support; weak segments return `insufficient-data`. The report contains counts and aggregate statistics only—never borrower rows, IDs or exact feature vectors. Adversarial validation measures how distinguishable two feature populations are; it does not by itself prove that the credit model is invalid or establish causality.
+
+On the v3.2 governed real-data validation run, the bounded adversarial classifier produced **AUC 0.5593** for training versus later calibration+OOT observations. Under the versioned review policy, the aggregate shift status was **pass**, and all four champion features (`debtToIncome`, `loanToIncome`, `creditScore`, `employmentYears`) had feature-level status **pass**. This is evidence for that historical split only, not a guarantee of present-day or cross-population stability.
+
 ## Calibration
 
 The monotonic XGBoost champion is trained on the train cohort. A separate Platt/logistic calibration layer is fitted only on 2016 originations, then evaluated on the later 2017 OOT cohort.
@@ -151,7 +161,13 @@ Legacy UCI Statlog German Credit and corrected South German Credit remain struct
 
 The API returns local model reason codes from bounded counterfactual sensitivity against real training-reference values for trained features. Policy triggers are returned separately as `policyReasons`.
 
-Counterfactuals are model-analysis aids, not promises of approval and not legally sufficient adverse-action reasons.
+CRIX v3.2 adds **offline explanation-fidelity validation** in `model/explanation_validation.py`. A fixed-seed governed OOT sample is explained independently with SHAP TreeExplainer and compared with the live-compatible local champion-sensitivity method using top-k feature overlap/disagreement, absolute-rank correlation, sign/direction agreement and stability under small valid perturbations. Evidence is also aggregated by credit-score band, DTI band, loan-to-income band, PD band and in-distribution/OOD status, with `insufficient-data` for weak segments.
+
+SHAP remains outside the Fastify request path, so this validation adds no live latency or Python dependency. The generated `model/artifacts/crix-explanation-validation-v1.json` is aggregate-only and version-bound to CRIX-MonoBoost 2.0.0; report generation fails if champion identity metadata does not match.
+
+On the governed v3.2 OOT sample (**n=512**, fixed seed 42), the offline comparison measured mean top-3 feature overlap **0.9759**, top-3 disagreement rate **7.23%**, mean absolute-rank correlation **0.9141**, mean sign agreement **0.9533**, and mean perturbation top-3 stability **0.9694**. These values support broad consistency between the two explanation methods on this sample while leaving the semantic/legal boundaries below unchanged.
+
+SHAP values are **model-explanation evidence only**. They are not automatically legal adverse-action reasons, do not replace deterministic `policyReasons`, and do not establish ECOA/fair-lending compliance. Counterfactuals remain model-analysis aids, not promises of approval and not legally sufficient adverse-action reasons.
 
 ## Live expected loss
 
@@ -258,6 +274,18 @@ The live service constructs one immutable scoring context per base application: 
 
 Intentional repeated champion scoring is bounded to the small explanation feature set. Tree traversal is capped, batch size remains limited to 50, and no portfolio Monte Carlo/optimisation workload is exposed on the Fastify event loop.
 
+## v3.2 dataframe contracts
+
+Offline model development now fails early on versioned dataframe contracts before fitting. The primary LendingClub pipeline separately validates source schema and the harmonized frame, then independently enforces the existing point-in-time provenance gate and chronological split contract. Required controls include binary target domain, parseable chronological dates, application-time feature-as-of semantics, positive income/loan amount, finite/bounded DTI, bureau-score and employment-tenure ranges, unique source-row identity and non-overlapping train/calibration/OOT cohorts.
+
+External Taiwan and German research datasets use product-specific contracts rather than being forced into the LendingClub schema. Contract failures report only the contract/version, failing invariant, invalid count and safe aggregate summaries; raw borrower rows and IDs are not emitted.
+
+## v3.2 tamper-evident lineage
+
+`model/lineage.py` defines a versioned training-run manifest that hashes the approved model artifact, dependency environment and key governance evidence while carrying source-dataset identity/checksum, split counts, random seeds, feature/data-contract versions, Python version and the governed Git revision. Optional `previousManifest` links create an append-only hash chain across approved manifests.
+
+This is a **tamper-evident hash chain with no distributed-ledger dependency**. A successful verification proves that the checked files still match the digests recorded in the approved manifest and that the recorded chain link has not changed. It does **not** prove that the training methodology was correct, that third-party numerical libraries will reproduce bit-for-bit on every platform, or that the model is suitable for regulated use. CI verification is read-only; publication of a new approved lineage manifest remains an explicit reviewed action.
+
 ## Security / privacy boundary
 
 The public demo must not receive real consumer-credit data or raw private portfolios.
@@ -307,8 +335,14 @@ Before real credit/accounting/capital use, at minimum:
 Primary training/governance evidence:
 
 - `model/artifacts/crix-monoboost-v2.json`
+- `model/artifacts/crix-distribution-shift-v1.json`
+- `model/artifacts/crix-explanation-validation-v1.json`
 - `model/TRAINING_REPORT.md`
 - `model/governance.py`
+- `model/data_contracts.py`
+- `model/drift.py`
+- `model/explanation_validation.py`
+- `model/lineage.py`
 
 Lifetime-risk research:
 

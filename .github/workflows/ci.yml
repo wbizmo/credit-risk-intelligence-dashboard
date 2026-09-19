@@ -39,9 +39,17 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install governance and research-adapter test dependencies
-        run: pip install "numpy>=2.0,<3" "pandas>=2.2,<3" "scipy>=1.14,<2"
+        run: pip install "numpy>=2.0,<3" "pandas>=2.2,<3" "scipy>=1.14,<2" "scikit-learn>=1.6,<2"
       - name: Run CRIX model-governance tests
         run: python -m unittest discover -s model -p 'test_*.py' -v
+      - name: Verify committed training lineage read-only
+        run: |
+          python model/lineage.py verify \
+            model/lineage/crix-monoboost-v2.training-run.json \
+            --root . \
+            --expected-git-commit 007e8f2be0fb51c2487fb13db35c642a20f1ded7 \
+            --expected-data-contract-version crix-lendingclub-harmonized-v1
+          git diff --exit-code -- model/lineage
       - name: Capture Batch B portfolio benchmark evidence
         run: python model/benchmark_portfolio.py --quick
       - name: Capture Batch B synthetic tail validation

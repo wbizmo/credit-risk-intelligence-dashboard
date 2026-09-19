@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+
+from data_contracts import EXTERNAL_CONTRACT_VERSIONS, validate_external_dataset
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from ucimlrepo import fetch_ucirepo
@@ -103,9 +105,17 @@ def taiwan_behavioral() -> tuple[dict[str, object], pd.DataFrame, np.ndarray]:
     ).replace([np.inf, -np.inf], np.nan)
     behavior = behavior.fillna(behavior.median(numeric_only=True)).astype(np.float32)
 
+    contract = validate_external_dataset(
+        "uci-taiwan-credit-card-default",
+        behavior,
+        target,
+        source_features=list(behavior.columns),
+    )
     metrics = _metrics_from_cv(behavior, target)
     return (
         {
+            "dataContractVersion": EXTERNAL_CONTRACT_VERSIONS["uci-taiwan-credit-card-default"],
+            "dataContract": contract,
             "dataset": "uci-taiwan-credit-card-default",
             "doi": "10.24432/C55S3H",
             "license": "CC-BY-4.0",
@@ -172,9 +182,13 @@ def _encode_german(dataset_id: int, corrected: bool) -> tuple[pd.DataFrame, np.n
 
 def german_structural(dataset_id: int, corrected: bool) -> dict[str, object]:
     X, y, source_features = _encode_german(dataset_id, corrected)
+    dataset_name = "uci-south-german-credit" if corrected else "uci-statlog-german-credit"
+    contract = validate_external_dataset(dataset_name, X, y, source_features=source_features)
     metrics = _metrics_from_cv(X, y)
     return {
-        "dataset": "uci-south-german-credit" if corrected else "uci-statlog-german-credit",
+        "dataset": dataset_name,
+        "dataContractVersion": EXTERNAL_CONTRACT_VERSIONS[dataset_name],
+        "dataContract": contract,
         "doi": "10.24432/C5QG88" if corrected else "10.24432/C5NC77",
         "license": "CC-BY-4.0",
         "product": "consumer-instalment-credit",
