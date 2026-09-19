@@ -254,7 +254,9 @@ class BackendAndDependencyTests(unittest.TestCase):
 
 
 def _synthetic_pot_losses(shape: float, scale: float, tail_count: int = 999) -> np.ndarray:
-    body = np.linspace(0.0, 10.0, 9001)
+    if tail_count >= 9_900:
+        raise ValueError("tail_count must leave enough body observations")
+    body = np.linspace(0.0, 10.0, 10_000 - tail_count)
     u = (np.arange(tail_count, dtype=float) + 0.5) / tail_count
     excess = genpareto.ppf(u, c=shape, loc=0.0, scale=scale)
     return np.concatenate((body, 10.0 + excess))
