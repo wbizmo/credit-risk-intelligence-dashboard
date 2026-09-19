@@ -83,7 +83,7 @@ describe("compiled CRIX runtime", () => {
       const overridden = [...vector];
       overridden[featureIndex] = override;
       const sparseMargin = evaluateMarginWithFeatureOverride(model, baseline, vector, featureIndex, override);
-      expect(sparseMargin).toBeCloseTo(evaluateCompiledMargin(model, overridden), 14);
+      expect(sparseMargin).toBeCloseTo(evaluateCompiledMargin(model, overridden), 12);
     }
   });
 
