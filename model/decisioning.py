@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import itertools
+import heapq
 import math
 from typing import Iterable
 
@@ -108,31 +108,93 @@ def optimize_exact(
     candidates = list(candidates)
     if not math.isfinite(float(budget)) or budget < 0.0:
         raise ValueError("budget must be finite and non-negative")
-    if max_expected_loss is not None and max_expected_loss < 0.0:
-        raise ValueError("max_expected_loss cannot be negative")
+    if max_expected_loss is not None and (
+        not math.isfinite(float(max_expected_loss)) or max_expected_loss < 0.0
+    ):
+        raise ValueError("max_expected_loss must be finite and non-negative")
     if max_segment_share is not None and not (0.0 < max_segment_share <= 1.0):
         raise ValueError("max_segment_share must lie in (0, 1]")
-    if min_approval_count < 0:
-        raise ValueError("min_approval_count cannot be negative")
-    eligible = [c for c in candidates if c.eligible]
+    if not isinstance(min_approval_count, int) or min_approval_count < 0:
+        raise ValueError("min_approval_count must be a non-negative integer")
+    ids = [candidate.candidate_id for candidate in candidates]
+    if len(ids) != len(set(ids)):
+        raise ValueError("candidate_id values must be unique")
+
+    eligible = [candidate for candidate in candidates if candidate.eligible]
     if len(eligible) > 24:
         raise ValueError("exact optimizer is intentionally bounded to 24 eligible candidates; use a governed solver for larger coupled problems")
 
-    best: tuple[float, float, tuple[str, ...], dict] | None = None
-    for mask in range(1 << len(eligible)):
-        selected = [eligible[i] for i in range(len(eligible)) if mask & (1 << i)]
-        if len(selected) < min_approval_count:
-            continue
-        feasible, metrics = _evaluate_subset(selected, budget, max_expected_loss, max_segment_share)
-        if not feasible:
-            continue
-        expected_return = sum(c.expected_return for c in selected)
-        ids = tuple(sorted(c.candidate_id for c in selected))
-        candidate_score = (expected_return, metrics["exposure"], tuple(reversed(ids)))
-        if best is None or candidate_score > (best[0], best[1], tuple(reversed(best[2]))):
-            best = (expected_return, metrics["exposure"], ids, metrics)
+    n = len(eligible)
+    lex_rank = {
+        candidate_id: rank
+        for rank, candidate_id in enumerate(sorted(candidate.candidate_id for candidate in eligible))
+    }
+    selected = [False] * n
+    segment_exposure: dict[str, float] = {}
+    segment_heap: list[tuple[float, str]] = []
+    selected_count = 0
+    exposure = 0.0
+    expected_loss = 0.0
+    expected_return = 0.0
+    tie_mask = 0
+    previous_gray = 0
+    best_score: tuple[float, float, int] | None = None
+    best_selection = 0
 
-    if best is None:
+    def max_segment_exposure() -> float:
+        while segment_heap:
+            negative_value, segment = segment_heap[0]
+            current = segment_exposure.get(segment, 0.0)
+            if -negative_value == current:
+                return current
+            heapq.heappop(segment_heap)
+        return 0.0
+
+    # Gray-code enumeration flips exactly one candidate per subset. This keeps
+    # exposure/loss/return/segment state incremental rather than rebuilding an
+    # O(n) selected list for every one of 2^n subsets.
+    for step in range(1 << n):
+        gray = step ^ (step >> 1)
+        if step:
+            changed = gray ^ previous_gray
+            index = changed.bit_length() - 1
+            candidate = eligible[index]
+            adding = bool(gray & changed)
+            sign = 1.0 if adding else -1.0
+
+            selected[index] = adding
+            selected_count += 1 if adding else -1
+            exposure += sign * candidate.exposure
+            expected_loss += sign * candidate.expected_loss
+            expected_return += sign * candidate.expected_return
+            tie_mask ^= 1 << lex_rank[candidate.candidate_id]
+
+            updated_segment = segment_exposure.get(candidate.segment, 0.0) + sign * candidate.exposure
+            if abs(updated_segment) <= 1e-12:
+                updated_segment = 0.0
+            segment_exposure[candidate.segment] = updated_segment
+            heapq.heappush(segment_heap, (-updated_segment, candidate.segment))
+            previous_gray = gray
+
+        if selected_count < min_approval_count:
+            continue
+        if exposure > budget + 1e-12:
+            continue
+        if max_expected_loss is not None and expected_loss > max_expected_loss + 1e-12:
+            continue
+        if (
+            max_segment_share is not None
+            and exposure > 0.0
+            and max_segment_exposure() > max_segment_share * exposure + 1e-12
+        ):
+            continue
+
+        score = (expected_return, exposure, tie_mask)
+        if best_score is None or score > best_score:
+            best_score = score
+            best_selection = gray
+
+    if best_score is None:
         return {
             "status": "infeasible",
             "selectedIds": [],
@@ -141,19 +203,36 @@ def optimize_exact(
             "exposure": 0.0,
             "reason": "no eligible portfolio satisfies all hard constraints",
         }
-    expected_return, exposure, ids, metrics = best
+
+    selected_candidates = [
+        eligible[index]
+        for index in range(n)
+        if best_selection & (1 << index)
+    ]
+    feasible, metrics = _evaluate_subset(
+        selected_candidates,
+        budget,
+        max_expected_loss,
+        max_segment_share,
+    )
+    if not feasible:
+        raise RuntimeError("incremental optimizer state diverged from final constraint revalidation")
+
+    final_return = sum(candidate.expected_return for candidate in selected_candidates)
+    selected_ids = sorted(candidate.candidate_id for candidate in selected_candidates)
+    final_exposure = metrics["exposure"]
     return {
         "status": "optimal",
-        "selectedIds": list(ids),
-        "expectedReturn": expected_return,
+        "selectedIds": selected_ids,
+        "expectedReturn": final_return,
         "expectedLoss": metrics["expectedLoss"],
-        "exposure": exposure,
+        "exposure": final_exposure,
         "segmentExposure": metrics["segmentExposure"],
         "bindingConstraints": {
-            "budget": abs(exposure - budget) < 1e-10,
+            "budget": abs(final_exposure - budget) < 1e-10,
             "expectedLoss": max_expected_loss is not None and abs(metrics["expectedLoss"] - max_expected_loss) < 1e-10,
         },
-        "method": "bounded exhaustive 0/1 search",
+        "method": "bounded Gray-code exhaustive 0/1 search; O(2^n log G) with segment constraints",
     }
 
 
