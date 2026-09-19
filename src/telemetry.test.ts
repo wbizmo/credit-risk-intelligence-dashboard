@@ -165,6 +165,64 @@ describe("OpenTelemetry metrics", () => {
     expect(values).not.toContain(24_000);
 
     await app.close();
+
+    const publicConfig: AppConfig = {
+      ...config,
+      authMode: "public-demo",
+      apiKeys: [],
+    };
+    const rateLimitedApp = await buildApp(publicConfig, {
+      telemetry,
+      routeRateLimitScale: 0.02,
+    });
+    const first = await rateLimitedApp.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      payload: {
+        annualIncome: 85_000,
+        debtToIncome: 0.28,
+        creditScore: 720,
+        creditUtilization: 0.3,
+        delinquencies24m: 0,
+        inquiries6m: 1,
+        oldestTradeMonths: 96,
+        openAccounts: 7,
+        loanAmount: 24_000,
+        termMonths: 36,
+        employmentYears: 5,
+        cashBufferMonths: 3,
+        onTimePaymentRate: 0.98,
+        incomeStability: 0.82,
+        recentCreditGrowth: 0.08,
+      },
+    });
+    const second = await rateLimitedApp.inject({
+      method: "POST",
+      url: "/api/v3/risk/score",
+      payload: {
+        annualIncome: 85_000,
+        debtToIncome: 0.28,
+        creditScore: 720,
+        creditUtilization: 0.3,
+        delinquencies24m: 0,
+        inquiries6m: 1,
+        oldestTradeMonths: 96,
+        openAccounts: 7,
+        loanAmount: 24_000,
+        termMonths: 36,
+        employmentYears: 5,
+        cashBufferMonths: 3,
+        onTimePaymentRate: 0.98,
+        incomeStability: 0.82,
+        recentCreditGrowth: 0.08,
+      },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(429);
+    await rateLimitedApp.close();
+
+    expect(await telemetry.forceFlush()).toBe(true);
+    expect(metricNames(exporter)).toContain("crix.rate_limit.rejections");
     await telemetry.shutdown();
   });
 
