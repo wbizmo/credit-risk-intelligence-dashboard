@@ -2,7 +2,7 @@
 
 CRIX v3.2.0 is an engineering-hardening release over the real-data v3 foundation. It makes the runtime measurably leaner, expands the offline portfolio/tail-risk stack, strengthens model-risk governance, hardens deployment/authentication and makes dependency/lineage evidence reproducible—without changing the live probability target or silently promoting a research model.
 
-**Compatibility:** package release **3.2.0**; API contract **3.0.0** under `/api/v3`; primary champion **CRIX-MonoBoost 2.0.0**; live policy **CRIX-Policy 3.0**.
+**Compatibility:** package release **3.2.0**; API contract **3.2.0** under the unchanged major namespace `/api/v3`; primary champion **CRIX-MonoBoost 2.0.0**; live policy **CRIX-Policy 3.0**.
 
 ## Measured runtime evidence
 

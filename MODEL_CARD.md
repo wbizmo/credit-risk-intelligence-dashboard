@@ -4,6 +4,7 @@
 
 CRIX package release: **v3.2.0**  
 API namespace: **`/api/v3`**  
+API contract version: **3.2.0**  
 Bundled primary model: **CRIX-MonoBoost 2.0.0**  
 Live policy: **CRIX-Policy 3.0**
 

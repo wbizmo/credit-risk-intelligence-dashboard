@@ -1,4 +1,4 @@
-export const API_VERSION = "3.0.0";
+export const API_VERSION = "3.2.0";
 export const API_MAJOR_PATH = "/api/v3";
 export const MAX_BATCH_SIZE = 50;
 

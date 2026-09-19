@@ -38,7 +38,7 @@ Risk Engine
 Versioned JSON model artifact
 ```
 
-There is no database, Redis instance, queue, browser application, Python inference service or external inference dependency in the live system. Package release **3.2.0** remains on API contract **3.0.0** and namespace **`/api/v3`**; release metadata is surfaced separately so package changes do not masquerade as API-semantic changes.
+There is no database, Redis instance, queue, browser application, Python inference service or external inference dependency in the live system. Package release **3.2.0** and API contract **3.2.0** are both surfaced explicitly, while the stable major route namespace remains **`/api/v3`**. `releaseVersion` and `apiVersion` stay separate fields so future package and API revisions can diverge without ambiguity.
 
 ## Runtime / research complexity boundaries
 

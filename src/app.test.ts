@@ -68,7 +68,7 @@ describe("CRIX HTTP API", () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.authentication).toBe("public-demo");
-    expect(body.apiVersion).toBe("3.0.0");
+    expect(body.apiVersion).toBe("3.2.0");
     expect(body.releaseVersion).toBe("3.2.0");
     await app.close();
   });
@@ -80,13 +80,13 @@ describe("CRIX HTTP API", () => {
     expect(health.statusCode).toBe(200);
     expect(health.json()).toMatchObject({
       status: "ok",
-      version: "3.0.0",
+      version: "3.2.0",
       releaseVersion: "3.2.0",
     });
     expect(ready.statusCode).toBe(200);
     expect(ready.json()).toMatchObject({
       status: "ready",
-      version: "3.0.0",
+      version: "3.2.0",
       releaseVersion: "3.2.0",
     });
     await app.close();
@@ -99,7 +99,7 @@ describe("CRIX HTTP API", () => {
     expect(ready.json()).toMatchObject({
       status: "not-ready",
       modelLoaded: false,
-      version: "3.0.0",
+      version: "3.2.0",
       releaseVersion: "3.2.0",
     });
     await app.close();
@@ -149,7 +149,7 @@ describe("CRIX HTTP API", () => {
     const response = await app.inject({ method: "POST", url: "/api/v3/risk/score", payload: application });
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.apiVersion).toBe("3.0.0");
+    expect(body.apiVersion).toBe("3.2.0");
     expect(body.releaseVersion).toBe("3.2.0");
     expect(body.requestId).toBeTruthy();
     expect(body.result.pd).toBeGreaterThan(0);

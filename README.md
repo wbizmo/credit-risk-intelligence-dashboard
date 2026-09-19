@@ -22,10 +22,11 @@ The model is the product; HTTP + OpenAPI are the live interface. Heavy portfolio
 
 - Package release: **3.2.0**
 - API namespace: **`/api/v3`**
+- API contract version: **3.2.0**
 - Live primary model: **CRIX-MonoBoost 2.0.0**
 - Live decision policy: **CRIX-Policy 3.0**
 
-The package, API, model and policy versions are intentionally independent. CRIX v3.2.0 adds runtime performance work, deeper tail-risk research, model-governance controls, hardened deployment modes, privacy-bounded telemetry and reproducible dependency evidence without changing the `/api/v3` PD target, CRIX-MonoBoost 2.0.0 champion or CRIX-Policy 3.0 semantics.
+The package, API, model and policy versions are independently governed even when their numbers coincide. CRIX v3.2.0 reports both package `releaseVersion` **3.2.0** and API `apiVersion` **3.2.0**, while the stable major route namespace remains `/api/v3`. The release adds runtime performance work, deeper tail-risk research, model-governance controls, hardened deployment modes, privacy-bounded telemetry and reproducible dependency evidence without changing the final-loan-resolution PD target, CRIX-MonoBoost 2.0.0 champion or CRIX-Policy 3.0 semantics.
 
 ## Primary champion — real LendingClub outcomes
 
