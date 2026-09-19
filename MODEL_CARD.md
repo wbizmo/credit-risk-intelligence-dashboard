@@ -2,18 +2,18 @@
 
 ## System context
 
-CRIX package release: **v3.1.0**  
+CRIX package release: **v3.2.0**  
 API namespace: **`/api/v3`**  
 Bundled primary model: **CRIX-MonoBoost 2.0.0**  
 Live policy: **CRIX-Policy 3.0**
 
-The package, API, model and policy versions are intentionally independent. v3.1 expands the offline research stack without changing the live v3 probability target or silently promoting research models into runtime scoring.
+The package, API, model and policy versions are intentionally independent. v3.2 strengthens the offline governance/research stack without changing the live v3 probability target or silently promoting research models into runtime scoring.
 
 ## Intended use
 
 CRIX-MonoBoost is an engineering/model-risk demonstration showing how a real-data credit-risk model can be trained with point-in-time discipline, calibrated on later originations, challenged, explained, sensitivity-tested and exposed through a governed API contract.
 
-CRIX v3.1 additionally includes offline research modules for lifetime PD, delinquency migration, empirical LGD/EAD, correlated portfolio loss, macro-conditioned stress, IFRS 9-style ECL, Basel-style/economic capital and constrained portfolio optimisation.
+CRIX v3.2 includes the existing offline lifetime-risk, migration, empirical LGD/EAD, portfolio, macro, IFRS 9-style, capital and optimisation research stack plus adversarial drift diagnostics, explanation-fidelity validation, versioned dataframe contracts and tamper-evident lineage.
 
 It is **not approved for real lending decisions, accounting policy or regulatory-capital use**.
 
@@ -135,7 +135,7 @@ The runtime challenger is a standardized logistic-regression model trained on th
 
 Every live request surfaces `challengerPd`, champion/challenger disagreement and confidence effects.
 
-v3.1 adds a separate research-governance comparison using the **actual embedded challenger** on the same LendingClub calibration/OOT cohorts. Promotion evidence is deliberately broader than AUC and includes calibration, Brier/log loss, PSI/stability, bootstrap uncertainty and segment diagnostics. A challenger is not promoted merely because one discrimination metric is marginally higher.
+The offline research stack adds a separate research-governance comparison using the **actual embedded challenger** on the same LendingClub calibration/OOT cohorts. Promotion evidence is deliberately broader than AUC and includes calibration, Brier/log loss, PSI/stability, bootstrap uncertainty and segment diagnostics. A challenger is not promoted merely because one discrimination metric is marginally higher.
 
 ## Out-of-distribution handling
 
@@ -179,7 +179,7 @@ where runtime LGD is a deterministic engineering approximation and runtime EAD i
 
 Because the live primary PD target is final-resolution risk, live expected-loss outputs inherit that horizon limitation.
 
-## v3.1 offline lifetime-risk stack
+## Offline lifetime-risk stack
 
 ### Historical as-of / time machine
 
@@ -221,7 +221,7 @@ Heavy simulation is deliberately excluded from Fastify request handling to avoid
 
 The live `/api/v3/risk/stress` endpoint remains **deterministic borrower sensitivity** (`CRIX-Sensitivity 1.0`).
 
-v3.1 adds a separate offline macro research layer with point-in-time macro joins and an empirical unemployment/default relationship demonstration. The U.S. unemployment series used by the public research run is frozen in the repository with provenance so validation is not dependent on a live FRED request.
+The offline research stack adds a separate macro research layer with point-in-time macro joins and an empirical unemployment/default relationship demonstration. The U.S. unemployment series used by the public research run is frozen in the repository with provenance so validation is not dependent on a live FRED request.
 
 This is research evidence, not an institutionally validated macroeconometric stress model.
 
@@ -266,7 +266,7 @@ Model retraining and risk-appetite changes can therefore be governed independent
 
 The `/api/v3/risk/stress` endpoint applies fixed borrower-level mild/severe shocks and reruns the ordinary live model/policy lifecycle.
 
-It is **not** the v3.1 macro research engine. Context fields absent from the champion cannot directly alter champion PD unless they change a trained derived feature.
+It is **not** the offline macro research engine. Context fields absent from the champion cannot directly alter champion PD unless they change a trained derived feature.
 
 ## Runtime efficiency and bounded work
 
@@ -353,7 +353,7 @@ Lifetime-risk research:
 - `model/ead.py`
 - `model/time_machine.py`
 
-Advanced v3.1 research:
+Advanced offline research:
 
 - `model/portfolio_risk.py`
 - `model/macro_stress.py`
@@ -363,4 +363,4 @@ Advanced v3.1 research:
 - `model/challenger_governance.py`
 - `model/train_advanced_risk.py`
 
-GitHub Actions runs the complete model/governance suite and full research validation before merge. The v3.1 roadmap merge was gated by **57 passing Python tests**, successful live-runtime CI, champion retrain validation, isolated historical risk-stack reproduction and integrated advanced-risk evidence generation.
+GitHub Actions runs the complete model/governance suite and full research validation before merge. The v3.2 governance release was gated by **89 passing Python tests** with one optional GPU-only skip, successful live-runtime CI, champion retrain validation, read-only lineage verification, isolated historical risk-stack reproduction and integrated advanced-risk evidence generation.
