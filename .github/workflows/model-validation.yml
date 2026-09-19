@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "model/**"
+      - "MODEL_CARD.md"
       - ".github/workflows/model-validation.yml"
   workflow_dispatch:
 
@@ -84,9 +85,56 @@ jobs:
           assert len(governance["featureProvenance"]) == len(retrained["featureNames"])
           assert set(governance["uncertainty"]) == {"auc", "brier", "logLoss", "ks"}
           assert governance["policyBacktests"]["approveAll"]["selectedCount"] == retrained["metrics"]["testSamples"]
+          assert retrained["training"]["dataContracts"] == {
+              "source": "lendingclub-source-v1",
+              "harmonized": "crix-lendingclub-harmonized-v1",
+              "split": "crix-chronological-split-v1",
+          }
+          shift = governance["distributionShift"]
+          assert shift["policy"]["version"] == "crix-distribution-shift-v1"
+          assert shift["action"].startswith("review-only")
+          assert shift["chronology"]["overlap"] is False
+          assert set(shift["features"]) == set(retrained["featureNames"])
+          assert Path("model/artifacts/crix-distribution-shift-v1.json").is_file()
+
+          fidelity = governance["explanationFidelity"]
+          assert fidelity["version"] == "crix-explanation-fidelity-v1"
+          assert fidelity["runtimeImpact"].startswith("none")
+          assert Path("model/artifacts/crix-explanation-validation-v1.json").is_file()
+
           print("CRIX deployed-champion retrain validation passed", deltas)
+          print("CRIX_SHIFT_SUMMARY=" + json.dumps({
+              "status": shift["status"],
+              "adversarialAuc": shift["adversarialValidation"]["auc"],
+              "featureStatuses": {name: row["status"] for name, row in shift["features"].items()},
+          }, sort_keys=True))
+          print("CRIX_EXPLANATION_SUMMARY=" + json.dumps({
+              "overall": fidelity["overall"],
+              "sample": fidelity["sample"],
+          }, sort_keys=True))
           PY
           cp /tmp/crix-monoboost-v2.committed.json model/artifacts/crix-monoboost-v2.json
+      - name: Generate reviewed lineage candidate (temporary PR evidence)
+        run: |
+          TRAINING_COMMIT="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("model/artifacts/crix-monoboost-v2.manifest.json").read_text())["gitCommit"])
+          PY
+          )"
+          python model/lineage.py generate \
+            --root . \
+            --runtime-manifest model/artifacts/crix-monoboost-v2.manifest.json \
+            --artifact model/artifacts/crix-monoboost-v2.json \
+            --dependency-lock model/requirements.txt \
+            --dataset model/data/LC_loans_granting_model_dataset.csv \
+            --evidence MODEL_CARD.md model/TRAINING_REPORT.md \
+            --run-id crix-v3.2-lineage-initial \
+            --git-commit "$TRAINING_COMMIT" \
+            --data-contract-version crix-lendingclub-harmonized-v1 \
+            --created-at 2026-09-19T00:00:00+00:00 \
+            --output /tmp/crix-training-lineage-v1.json
+          cat /tmp/crix-training-lineage-v1.json
       - name: Publish deployed champion manifest and registry index
         run: python model/publish_champion_manifest.py
       - name: Validate point-in-time research risk stack without rebinding immutable versions
@@ -216,6 +264,8 @@ jobs:
             model/artifacts/crix-ccf-taiwan-v1.json
             model/artifacts/crix-lgd-v1.json
             model/artifacts/crix-advanced-risk-v1.json
+            model/artifacts/crix-distribution-shift-v1.json
+            model/artifacts/crix-explanation-validation-v1.json
             model/artifacts/snapshot-*.json
             model/public_data/UNRATE_2006_2014.csv
             model/TRAINING_REPORT.md
