@@ -20,12 +20,12 @@ The model is the product; HTTP + OpenAPI are the live interface. Heavy portfolio
 
 ## Release / model versions
 
-- Package release: **3.1.0**
+- Package release: **3.2.0**
 - API namespace: **`/api/v3`**
 - Live primary model: **CRIX-MonoBoost 2.0.0**
 - Live decision policy: **CRIX-Policy 3.0**
 
-The package and API/model versions are intentionally independent. v3.1 adds research capabilities without silently changing the deployed v3 PD target or runtime champion.
+The package and API/model versions are intentionally independent. v3.2 strengthens offline model-risk governance, explanation validation, data contracts and tamper-evident lineage without changing the deployed v3 PD target or runtime champion.
 
 ## Primary champion — real LendingClub outcomes
 
@@ -66,7 +66,7 @@ The wider API accepts additional context for policy, confidence, deterministic r
 
 These are model-development diagnostics, not a cosmetic “accuracy” score.
 
-## v3.1 research stack
+## v3.2 research stack
 
 The research boundary is intentionally separate from the live `/api/v3` score contract.
 
