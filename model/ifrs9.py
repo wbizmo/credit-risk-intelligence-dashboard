@@ -15,6 +15,18 @@ class EclPolicy:
     stage3_dpd: int = 90
     cure_probation_months: int = 3
 
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.relative_pd_multiplier) or self.relative_pd_multiplier <= 1.0:
+            raise ValueError("relative_pd_multiplier must be finite and greater than 1")
+        if not math.isfinite(self.absolute_pd_increase) or not (0.0 <= self.absolute_pd_increase < 1.0):
+            raise ValueError("absolute_pd_increase must lie in [0, 1)")
+        if not isinstance(self.stage2_dpd, int) or not isinstance(self.stage3_dpd, int):
+            raise ValueError("DPD backstops must be integers")
+        if self.stage2_dpd < 0 or self.stage3_dpd <= self.stage2_dpd:
+            raise ValueError("stage3_dpd must be greater than stage2_dpd >= 0")
+        if not isinstance(self.cure_probation_months, int) or self.cure_probation_months < 0:
+            raise ValueError("cure_probation_months must be a non-negative integer")
+
 
 def cumulative_to_marginal(cumulative_pd: Iterable[float]) -> np.ndarray:
     values = np.asarray(list(cumulative_pd), dtype=float)
@@ -35,10 +47,18 @@ def determine_stage(
     months_since_cure: int | None = None,
     policy: EclPolicy = EclPolicy(),
 ) -> dict:
+    if not all(math.isfinite(value) for value in (origination_pd, current_pd)):
+        raise ValueError("PDs must be finite")
     if origination_pd <= 0 or current_pd <= 0 or origination_pd >= 1 or current_pd >= 1:
         raise ValueError("PDs must lie strictly inside (0, 1)")
-    if dpd < 0:
-        raise ValueError("dpd cannot be negative")
+    if not isinstance(dpd, int) or dpd < 0:
+        raise ValueError("dpd must be a non-negative integer")
+    if previous_stage is not None and previous_stage not in (1, 2, 3):
+        raise ValueError("previous_stage must be 1, 2 or 3")
+    if months_since_cure is not None and (
+        not isinstance(months_since_cure, int) or months_since_cure < 0
+    ):
+        raise ValueError("months_since_cure must be a non-negative integer")
     reasons: list[str] = []
     if is_default or dpd >= policy.stage3_dpd:
         return {"stage": 3, "reasons": ["credit-impaired/default backstop"]}
