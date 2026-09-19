@@ -288,16 +288,16 @@ def validate_chronological_splits(
                 invalid_count=1,
             )
 
-    ids = {
-        "train": set(train["sourceRowId"].tolist()),
-        "calibration": set(calibration["sourceRowId"].tolist()),
-        "oot": set(oot["sourceRowId"].tolist()),
-    }
-    overlaps = (
-        len(ids["train"] & ids["calibration"])
-        + len(ids["train"] & ids["oot"])
-        + len(ids["calibration"] & ids["oot"])
+    combined_ids = pd.concat(
+        [
+            train["sourceRowId"],
+            calibration["sourceRowId"],
+            oot["sourceRowId"],
+        ],
+        ignore_index=True,
+        copy=False,
     )
+    overlaps = int(combined_ids.duplicated(keep=False).sum())
     if overlaps:
         raise ContractViolation(
             contract=contract,
