@@ -163,7 +163,7 @@ function benchmarkStorageRepresentation() {
     selectedRuntimeRepresentation: "packed-js-arrays",
     packed: packedResult,
     typed: typedResult,
-    note: "The production compiler keeps packed frozen JS arrays. This benchmark records the actual deployed artifact under the current Node runtime so representation choice remains evidence-backed.",
+    note: "The production compiler keeps copied packed JS arrays behind a frozen compiled plan. Numeric storage is readonly by contract because freezing indexed arrays materially degrades Node 22 hot-path performance.",
   };
 }
 
