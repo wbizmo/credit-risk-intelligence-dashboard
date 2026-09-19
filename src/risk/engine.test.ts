@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessRisk, predictDefaultProbability, stressApplication, verifyModelIntegrity } from "./engine";
+import {\n  assessRisk,\n  assessRiskReferenceForTest,\n  assessRiskWithComplexity,\n  benchmarkExpectedFullExplanationTreeVisits,\n  benchmarkTreeDensity,\n  predictDefaultProbability,\n  stressApplication,\n  verifyModelIntegrity,\n} from "./engine";
 import type { ApplicationInput } from "./types";
 
 const baseline: ApplicationInput = {
