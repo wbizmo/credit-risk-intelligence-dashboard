@@ -2,6 +2,35 @@
 
 All notable CRIX releases are documented here.
 
+## 3.2.0 — 2026-09-19
+
+### Portfolio tail-risk research
+
+- Added Student-t dependence and bounded low-rank multi-factor dependence alongside the canonical one-factor Gaussian portfolio-loss simulator.
+- Added single-replay tail attribution and an optional lazy CuPy backend for offline GPU experiments while preserving NumPy as the canonical reproducible path.
+- Added Peaks-Over-Threshold GPD/EVT tail research with threshold-stability diagnostics, bounded bootstrap uncertainty and explicit insufficient/unstable states.
+- Preserved empirical Monte Carlo VaR/expected-shortfall semantics and withheld unsupported 99.9% tail estimates rather than manufacturing precision.
+
+### Distribution shift and explanation governance
+
+- Added bounded adversarial validation between the chronological training cohort and later calibration/OOT populations.
+- Added feature-level PSI, Jensen-Shannon, Wasserstein, support-breach, missingness and quantile-movement evidence with fixed segment diagnostics.
+- Added deterministic offline SHAP-vs-local-sensitivity fidelity validation with top-k overlap/disagreement, rank/sign agreement and bounded perturbation stability.
+- Kept SHAP/Python entirely outside the Fastify request path and preserved deterministic policy reasons as a separate layer.
+
+### Data contracts and lineage
+
+- Added versioned source, harmonized, split and product-specific external dataframe contracts that fail closed before model fitting.
+- Added immutable LendingClub source-checksum gating, chronology/split isolation checks, point-in-time provenance preservation and aggregate-only validation failures.
+- Added a committed tamper-evident training-run lineage manifest linking artifact/data/evidence hashes, historical artifact-origin revision and the v3.2 validation environment.
+- Added full-chain verification, repository-root path hardening and read-only CI lineage verification; manifest publication remains an explicit reviewed action.
+
+### Validation and compatibility
+
+- Expanded the Python governance/research suite to **89 passing tests** with one optional GPU-only skip.
+- Final v3.2 validation passed live Node build/type/lint/tests, real-data champion retraining, lineage verification, historical risk-stack reproduction, advanced-risk evidence and registry-integrity checks.
+- Kept `/api/v3`, CRIX-MonoBoost 2.0.0, CRIX-Policy 3.0 and live scoring semantics unchanged.
+
 ## 3.1.0 — 2026-09-12
 
 ### Model governance and point-in-time research
