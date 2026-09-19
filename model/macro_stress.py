@@ -89,8 +89,17 @@ def fit_univariate_logit(x: Iterable[float], y: Iterable[int], *, max_iter: int 
     p = np.clip(_sigmoid(design @ beta), 1e-9, 1.0 - 1e-9)
     w = p * (1.0 - p)
     information = design.T @ (w[:, None] * design)
-    covariance = np.linalg.inv(information)
-    standard_error = math.sqrt(float(covariance[1, 1]))
+    try:
+        coefficient_covariance_column = np.linalg.solve(
+            information,
+            np.array([0.0, 1.0], dtype=float),
+        )
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("macro logit information matrix is singular") from exc
+    coefficient_variance = float(coefficient_covariance_column[1])
+    if not math.isfinite(coefficient_variance) or coefficient_variance <= 0.0:
+        raise ValueError("macro logit coefficient variance is invalid")
+    standard_error = math.sqrt(coefficient_variance)
     coefficient = float(beta[1])
     return {
         "method": "univariate-logistic-macro-overlay",
