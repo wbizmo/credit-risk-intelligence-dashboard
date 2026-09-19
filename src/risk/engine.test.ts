@@ -175,12 +175,14 @@ describe("CRIX risk engine", () => {
     expect(complexity.championTreeVisits).toBe(density[0]!.totalTrees);
   });
 
-  it("creates fresh complexity counters for every diagnostic assessment", () => {
+  it("creates fresh complexity counters without changing scoring outputs", () => {
+    const ordinary = assessRisk(baseline);
     const first = assessRiskWithComplexity(baseline);
     const second = assessRiskWithComplexity(baseline);
 
+    expect(first.result).toEqual(ordinary);
+    expect(second.result).toEqual(ordinary);
     expect(second.complexity).toEqual(first.complexity);
-    expect(second.result).toEqual(first.result);
   });
 
   it("keeps diagnostic work linear across 1/10/25/50-item batch equivalents", () => {
