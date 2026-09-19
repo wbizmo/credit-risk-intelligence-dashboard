@@ -77,7 +77,9 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       redact: ["req.headers.authorization", "req.headers.x-api-key"],
     },
     genReqId: () => randomUUID(),
-    trustProxy: config.trustProxyHops > 0 ? config.trustProxyHops : false,
+    trustProxy: config.trustProxyHops > 0
+      ? (_address: string, hop: number) => hop < config.trustProxyHops
+      : false,
     bodyLimit: 64 * 1024,
     requestTimeout: 10_000,
     connectionTimeout: 10_000,
