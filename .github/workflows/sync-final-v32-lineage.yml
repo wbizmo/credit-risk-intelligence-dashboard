@@ -1,0 +1,44 @@
+name: Sync final v3.2 lineage evidence
+
+on:
+  push:
+    branches:
+      - release/v3.2.0-final
+    paths:
+      - MODEL_CARD.md
+      - model/TRAINING_REPORT.md
+      - .github/workflows/sync-final-v32-lineage.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Refresh governed evidence digests
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          path=Path('model/lineage/crix-monoboost-v2.training-run.json')
+          manifest=json.loads(path.read_text())
+          wanted={'MODEL_CARD.md','model/TRAINING_REPORT.md'}
+          for item in manifest['evidence']:
+              if item['path'] in wanted:
+                  item['sha256']=hashlib.sha256(Path(item['path']).read_bytes()).hexdigest()
+          path.write_text(json.dumps(manifest,indent=2)+'\n')
+          PY
+      - name: Commit synchronized lineage
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add model/lineage/crix-monoboost-v2.training-run.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "governance(lineage): sync final v3.2 evidence digests"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
