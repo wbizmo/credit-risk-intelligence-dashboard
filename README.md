@@ -212,7 +212,7 @@ Requirements: **Node.js 22+** and npm.
 ```bash
 git clone https://github.com/wbizmo/credit-risk-intelligence-dashboard.git
 cd credit-risk-intelligence-dashboard
-npm install
+npm ci
 npm run verify
 npm run dev
 ```
