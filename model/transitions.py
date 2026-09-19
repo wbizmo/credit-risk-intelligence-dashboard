@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from itertools import pairwise
 
 import numpy as np
 
@@ -33,7 +34,7 @@ def transition_counts(sequences: Iterable[Sequence[str | None]], states: Sequenc
         raise ValueError("transition states must be unique")
     counts = np.zeros((len(states), len(states)), dtype=np.int64)
     for sequence in sequences:
-        for current, following in zip(sequence[:-1], sequence[1:]):
+        for current, following in pairwise(sequence):
             if current is None or following is None:
                 continue
             if current not in state_index or following not in state_index:
