@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from datasets import LENDINGCLUB_FILENAME, _extract_lendingclub_archive
 from data_contracts import (
     ContractViolation,
     validate_chronological_splits,
@@ -50,6 +52,36 @@ def _harmonized_fixture() -> pd.DataFrame:
             "target": [0, 1, 0],
         }
     )
+
+
+class LendingClubDownloadTests(unittest.TestCase):
+    def test_archive_fallback_extracts_only_expected_dataset_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive_path = root / "source.zip"
+            output_path = root / LENDINGCLUB_FILENAME
+            payload = b"issue_d,revenue,Default\nJan-15,50000,0\n"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(LENDINGCLUB_FILENAME, payload)
+                archive.writestr("unrelated.txt", b"ignored")
+
+            _extract_lendingclub_archive(archive_path, output_path)
+            self.assertEqual(output_path.read_bytes(), payload)
+
+    def test_archive_fallback_rejects_missing_or_invalid_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive_path = root / "missing.zip"
+            output_path = root / LENDINGCLUB_FILENAME
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("other.csv", b"x\n")
+
+            with self.assertRaisesRegex(RuntimeError, "does not contain expected file"):
+                _extract_lendingclub_archive(archive_path, output_path)
+
+            archive_path.write_bytes(b"not-a-zip")
+            with self.assertRaisesRegex(RuntimeError, "not a valid ZIP"):
+                _extract_lendingclub_archive(archive_path, output_path)
 
 
 class DataContractTests(unittest.TestCase):
