@@ -74,6 +74,29 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund --legacy-peer-deps
       - name: Verify dependency lock provenance
         run: npm run verify:locks
+      - name: Prove lock drift fails closed
+        run: |
+          cp package.json /tmp/package.json
+          cp model/requirements.txt /tmp/requirements.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          package = json.loads(Path("package.json").read_text())
+          package["version"] = "0.0.0-drift-test"
+          Path("package.json").write_text(json.dumps(package, indent=2) + "\n")
+          PY
+          if npm run verify:locks; then
+            echo "Expected npm lock drift verification to fail."
+            exit 1
+          fi
+          cp /tmp/package.json package.json
+          printf '\n# deliberate-ci-drift\n' >> model/requirements.txt
+          if npm run verify:locks; then
+            echo "Expected Python requirements/lock drift verification to fail."
+            exit 1
+          fi
+          cp /tmp/requirements.txt model/requirements.txt
+          npm run verify:locks
       - name: Audit live Node production dependencies
         run: npm run audit:node
       - uses: actions/setup-python@v6
