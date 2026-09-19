@@ -1,3 +1,4 @@
+# Temporary Batch D lock generator; removed after locks are committed.
 name: Generate Batch D dependency locks
 
 on:
