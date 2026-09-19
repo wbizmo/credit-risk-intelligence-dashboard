@@ -10,6 +10,8 @@ on:
       - model/train.py
       - model/benchmark_external.py
       - model/requirements.txt
+      - model/requirements.lock
+      - model/requirements.lock.meta.json
       - .github/workflows/train-real-world-model.yml
 
 permissions:
@@ -31,14 +33,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: model/requirements.txt
+          cache-dependency-path: model/requirements.lock
       - name: Restore immutable LendingClub source cache
         uses: actions/cache@v4
         with:
           path: model/data/LC_loans_granting_model_dataset.csv
           key: crix-lendingclub-b019384d6bc65bf2a3e839362e4ff502
-      - name: Install training dependencies
-        run: pip install -r model/requirements.txt
+      - name: Install exact governed training dependencies
+        run: python -m pip install --require-hashes -r model/requirements.lock
       - name: Train and validate real-data champion/challenger
         run: python model/train.py
       - name: Run external real-world adaptation benchmarks
