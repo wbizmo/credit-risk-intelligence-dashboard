@@ -81,6 +81,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     timeWindow: "1 minute",
     keyGenerator: (request) => request.ip,
     errorResponseBuilder: (request) => ({
+      statusCode: 429,
       error: "RATE_LIMITED",
       message: "Too many requests. Retry after the current rate-limit window.",
       requestId: request.id,
