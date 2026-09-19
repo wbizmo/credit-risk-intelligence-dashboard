@@ -18,6 +18,7 @@ from data_contracts import (
 from drift import adversarial_validation, build_distribution_shift_evidence, jensen_shannon_divergence
 from explanation_validation import (
     _segment_rows,
+    _small_valid_perturbation,
     deterministic_sample_indices,
     sign_agreement,
     spearman_explanation_rank,
@@ -222,6 +223,22 @@ class ExplanationMetricTests(unittest.TestCase):
         assert correlation is not None
         self.assertGreater(correlation, 0.8)
         self.assertAlmostEqual(sign_agreement(left, right), 0.75)
+
+    def test_explanation_perturbations_are_small_and_domain_valid_for_ood_rows(self) -> None:
+        features = ["debtToIncome", "loanToIncome", "creditScore", "employmentYears"]
+        sample = np.array([[1.8, 2.8, 820.0, 9.5]], dtype=np.float32)
+        changed = _small_valid_perturbation(sample, features)
+        self.assertTrue(np.all(np.isfinite(changed)))
+        self.assertGreaterEqual(changed[0, 0], 0.0)
+        self.assertLessEqual(changed[0, 0], 2.0)
+        self.assertGreaterEqual(changed[0, 1], 0.001)
+        self.assertLessEqual(changed[0, 1], 3.0)
+        self.assertGreaterEqual(changed[0, 2], 300.0)
+        self.assertLessEqual(changed[0, 2], 850.0)
+        self.assertGreaterEqual(changed[0, 3], 0.0)
+        self.assertLessEqual(changed[0, 3], 10.0)
+        self.assertLessEqual(abs(float(changed[0, 0] - sample[0, 0])), 0.021)
+        self.assertLessEqual(abs(float(changed[0, 2] - sample[0, 2])), 5.51)
 
     def test_fixed_seed_sample_indices_are_deterministic(self) -> None:
         first = deterministic_sample_indices(1000, 100, 42)
