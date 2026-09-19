@@ -20,8 +20,8 @@ def irb_corporate_capital(pd: float, lgd: float, ead: float, *, maturity_years: 
         raise ValueError("IRB-style lgd must lie in [0, 1]")
     if not math.isfinite(ead) or ead < 0.0:
         raise ValueError("ead must be finite and non-negative")
-    if not math.isfinite(maturity_years) or maturity_years <= 0.0:
-        raise ValueError("maturity_years must be positive")
+    if not math.isfinite(maturity_years) or not (1.0 <= maturity_years <= 5.0):
+        raise ValueError("maturity_years must lie in [1, 5] for this IRB-style research formula")
     if not (0.0 < capital_ratio <= 1.0):
         raise ValueError("capital_ratio must lie in (0, 1]")
     if ead == 0.0:
@@ -38,7 +38,10 @@ def irb_corporate_capital(pd: float, lgd: float, ead: float, *, maturity_years: 
     base = 1.0 - math.exp(-50.0)
     correlation = 0.12 * (1.0 - exp_term) / base + 0.24 * (1.0 - (1.0 - exp_term) / base)
     b = (0.11852 - 0.05478 * math.log(pd)) ** 2
-    maturity_adjustment = (1.0 + (maturity_years - 2.5) * b) / (1.0 - 1.5 * b)
+    maturity_denominator = 1.0 - 1.5 * b
+    if maturity_denominator <= 0.0:
+        raise ValueError("pd is outside the numerically supported maturity-adjustment domain")
+    maturity_adjustment = (1.0 + (maturity_years - 2.5) * b) / maturity_denominator
     conditional_pd = _NORMAL.cdf((_NORMAL.inv_cdf(pd) + math.sqrt(correlation) * _NORMAL.inv_cdf(0.999)) / math.sqrt(1.0 - correlation))
     capital_rate = max(0.0, lgd * conditional_pd - pd * lgd) * maturity_adjustment
     capital = capital_rate * ead
@@ -87,6 +90,8 @@ def reconcile_tail_capital(tail_contributions: Iterable[float], expected_loss_co
         raise ValueError("tail and expected-loss contribution vectors must be equal and non-empty")
     if any(not math.isfinite(v) for v in tail + expected):
         raise ValueError("contributions must be finite")
+    if any(v < 0.0 for v in tail + expected):
+        raise ValueError("loss contributions must be non-negative")
     contributions = [t - e for t, e in zip(tail, expected)]
     return {
         "tailLoss": sum(tail),
