@@ -54,6 +54,9 @@ interface RequestErrorShape {
 }
 
 export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
+  const routeRateLimitScale = Math.max(1, Math.min(1_000, Math.floor(options.routeRateLimitScale ?? 1)));
+  const routeLimit = (max: number): number => max * routeRateLimitScale;
+
   const app = Fastify({
     logger: config.environment === "test" ? false : {
       level: config.logLevel,
@@ -179,7 +182,7 @@ export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport 
   }));
 
   app.get("/health", {
-    config: { rateLimit: { max: 600, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(600), timeWindow: "1 minute" } },
     schema: { tags: ["System"], summary: "Liveness probe", response: { 200: healthResponseSchema } },
   }, async () => ({
     status: "ok",
@@ -190,7 +193,7 @@ export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport 
   }));
 
   app.get("/ready", {
-    config: { rateLimit: { max: 600, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(600), timeWindow: "1 minute" } },
     schema: { tags: ["System"], summary: "Readiness probe", response: { 200: readyResponseSchema, 503: readyResponseSchema } },
   }, async (_request, reply) => {
     if (!modelReady) return reply.code(503).send({ status: "not-ready", modelLoaded: false, version: API_VERSION });
@@ -214,7 +217,7 @@ export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport 
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...modelMetadata() }));
 
   app.post<{ Body: ApplicationInput }>(`${API_MAJOR_PATH}/risk/score`, {
-    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(60), timeWindow: "1 minute" } },
     schema: {
       tags: ["Risk"],
       summary: "Score a single credit application",
@@ -225,7 +228,7 @@ export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport 
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, result: assessRisk(request.body) }));
 
   app.post<{ Body: { application: ApplicationInput; severity: StressSeverity } }>(`${API_MAJOR_PATH}/risk/stress`, {
-    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(30), timeWindow: "1 minute" } },
     schema: {
       tags: ["Risk"],
       summary: "Stress-test an application",
@@ -236,7 +239,7 @@ export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport 
   }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...stressApplication(request.body.application, request.body.severity) }));
 
   app.post<{ Body: { applications: ApplicationInput[] } }>(`${API_MAJOR_PATH}/risk/batch`, {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    config: { rateLimit: { max: routeLimit(10), timeWindow: "1 minute" } },
     schema: {
       tags: ["Risk"],
       summary: "Score a bounded batch",
