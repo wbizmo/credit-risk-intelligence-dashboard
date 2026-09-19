@@ -15,7 +15,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "benchmark:risk": "tsx src/risk/benchmark.ts",
-    "verify": "npm run build"
+    "verify": "npm run build",
+    "benchmark:http": "tsx src/risk/load.ts",
+    "benchmark:http:quick": "tsx src/risk/load.ts --quick"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.0",
