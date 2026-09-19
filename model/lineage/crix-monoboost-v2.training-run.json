@@ -19,7 +19,9 @@
   },
   "dependencyLock": {
     "path": "model/requirements.txt",
-    "sha256": "e5439fc56d47cb740da3fa5727be02fad5f1bacfa20ca6570a4abbb8e82a44e2"
+    "sha256": "e5439fc56d47cb740da3fa5727be02fad5f1bacfa20ca6570a4abbb8e82a44e2",
+    "scope": "v3.2-lineage-validation-environment",
+    "kind": "declared-requirements-specification"
   },
   "evidence": [
     {
@@ -36,13 +38,14 @@
   "previousManifest": null,
   "privacy": "aggregate counts, versions and hashes only; no borrower rows, IDs, secrets or absolute paths",
   "pythonVersion": "3.12.14",
-  "reproducibilityClass": "tamper-evident lineage for committed inputs/evidence; deterministic seeds and hashes do not guarantee bitwise retraining across numerical-library/platform changes",
+  "reproducibilityClass": "tamper-evident retrospective lineage for the approved artifact plus v3.2 validation evidence; the original manifest environment hash is preserved separately, and deterministic seeds/hashes do not guarantee bitwise retraining across numerical-library/platform changes",
   "runId": "crix-v3.2-lineage-initial",
   "runtimeManifest": {
     "artifactSha256": "1ed978ccc0f59420555d408d97c5f8909e953770709f1fed5ca482e99e649075",
     "modelId": "CRIX-MonoBoost@2.0.0",
     "trainingGitCommit": "007e8f2be0fb51c2487fb13db35c642a20f1ded7",
-    "trainingRunId": "34721148952"
+    "trainingRunId": "34721148952",
+    "trainingEnvironmentHash": "17178fe2f447301c47ff07451f8ecc8f7c9d7e49398f87e782778f21c1e2db65"
   },
   "schemaVersion": 1,
   "seeds": {
@@ -68,5 +71,7 @@
       "samples": 786730,
       "start": "2007-06-01"
     }
-  }
+  },
+  "gitCommitScope": "approved-artifact-origin-code-revision",
+  "pythonVersionScope": "v3.2-lineage-validation-environment"
 }
