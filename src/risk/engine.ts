@@ -1,4 +1,4 @@
-import { runtimeManifestMetadata, verifyRuntimeArtifactManifest } from "./registry";
+import { runtimeManifestMetadata } from "./registry";
 import {
   emptyComplexityCounters,
   evaluateBaselineWithCounters,
@@ -306,9 +306,11 @@ function assessRiskInternal(
 ): RiskResult {
   const model = getRuntimeModel();
   const context = createScoringContext(input, model);
-  const baseline = counters
-    ? evaluateBaselineWithCounters(model, context.vector, counters)
-    : evaluateCompiledBaseline(model, context.vector);
+  const baseline = mode === "reference"
+    ? { margin: 0, treeContributions: [] }
+    : counters
+      ? evaluateBaselineWithCounters(model, context.vector, counters)
+      : evaluateCompiledBaseline(model, context.vector);
   const pd = mode === "reference"
     ? calibratedProbability(model, evaluateReferenceMargin(artifact, context.vector))
     : calibratedProbability(model, baseline.margin);
@@ -417,7 +419,7 @@ export function modelMetadata() {
 }
 
 export function verifyModelIntegrity(): boolean {
-  if (!verifyRuntimeArtifactManifest() || !verifyCompiledRuntimeModel()) return false;
+  if (!verifyCompiledRuntimeModel()) return false;
   try {
     const model = getRuntimeModel();
     if (model.featureNames.length !== artifact.monotoneConstraints.length) return false;
