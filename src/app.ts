@@ -1,4 +1,5 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -6,6 +7,8 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { loadConfig, type AppConfig } from "./config";
+import { apiKeyFromHeader, matchApiKey, rateLimitIdentity } from "./security/auth";
+import { createTelemetry, type Telemetry } from "./telemetry";
 import { assessRisk, modelMetadata, stressApplication, verifyModelIntegrity } from "./risk/engine";
 import type { ApplicationInput, StressSeverity } from "./risk/types";
 import {
@@ -25,12 +28,6 @@ import {
 
 const OPENAPI_VERSION = "3.0.3";
 const SWAGGER_UI_PREFIX = "/docs/ui";
-
-const secureEqual = (actual: string, expected: string): boolean => {
-  const a = Buffer.from(actual);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-};
 
 const protectedRoute = (request: FastifyRequest) => request.url === API_MAJOR_PATH || request.url.startsWith(`${API_MAJOR_PATH}/`);
 
@@ -56,11 +53,19 @@ interface RequestErrorShape {
 export interface AppBuildOptions {
   verifyModel?: () => boolean;
   routeRateLimitScale?: number;
+  telemetry?: Telemetry;
 }
 
 export async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
-  const routeRateLimitScale = Math.max(1, Math.min(1_000, Math.floor(options.routeRateLimitScale ?? 1)));
-  const routeLimit = (max: number): number => max * routeRateLimitScale;
+  const routeRateLimitScale = Math.max(0.01, Math.min(1_000, options.routeRateLimitScale ?? 1));
+  const routeLimit = (max: number): number => Math.max(1, Math.floor(max * routeRateLimitScale));
+  const telemetry = options.telemetry ?? createTelemetry({
+    enabled: config.telemetryEnabled,
+    ...(config.otelMetricsEndpoint ? { endpoint: config.otelMetricsEndpoint } : {}),
+    exportIntervalMs: config.otelExportIntervalMs,
+  });
+  const ownsTelemetry = options.telemetry === undefined;
+  const requestStarts = new WeakMap<FastifyRequest, number>();
 
   const app = Fastify({
     logger: config.environment === "test" ? false : {
@@ -68,6 +73,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       redact: ["req.headers.authorization", "req.headers.x-api-key"],
     },
     genReqId: () => randomUUID(),
+    trustProxy: config.trustProxyHops > 0 ? config.trustProxyHops : false,
     bodyLimit: 64 * 1024,
     requestTimeout: 10_000,
     connectionTimeout: 10_000,
@@ -79,7 +85,11 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
   await app.register(rateLimit, {
     max: config.rateLimitMax,
     timeWindow: "1 minute",
-    keyGenerator: (request) => request.ip,
+    keyGenerator: (request) => rateLimitIdentity(
+      apiKeyFromHeader(request.headers["x-api-key"]),
+      config.authMode === "required" ? config.apiKeys : [],
+      request.ip,
+    ),
     errorResponseBuilder: (request) => ({
       statusCode: 429,
       error: "RATE_LIMITED",
@@ -133,14 +143,18 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
   });
 
   const modelReady = (options.verifyModel ?? verifyModelIntegrity)();
+  telemetry.setReadiness(modelReady, modelMetadata().name);
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
     reply.header("cache-control", "no-store");
+    if (telemetry.enabled) requestStarts.set(request, performance.now());
 
-    if (!config.apiKey || !protectedRoute(request)) return;
-    const supplied = request.headers["x-api-key"];
-    if (typeof supplied !== "string" || !secureEqual(supplied, config.apiKey)) {
+    if (config.authMode !== "required" || !protectedRoute(request)) return;
+    const supplied = apiKeyFromHeader(request.headers["x-api-key"]);
+    const match = supplied ? matchApiKey(supplied, config.apiKeys) : { matched: false };
+    if (!match.matched) {
+      telemetry.recordAuthRejection(request.routeOptions.url ?? "unmatched");
       return reply.code(401).send({
         error: "UNAUTHORIZED",
         message: "A valid x-api-key header is required.",
@@ -148,6 +162,23 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       });
     }
   });
+
+  app.addHook("onResponse", async (request, reply) => {
+    if (!telemetry.enabled) return;
+    const startedAt = requestStarts.get(request);
+    if (startedAt === undefined) return;
+    telemetry.recordHttp(
+      request.method,
+      request.routeOptions.url ?? "unmatched",
+      reply.statusCode,
+      performance.now() - startedAt,
+    );
+    requestStarts.delete(request);
+  });
+
+  if (ownsTelemetry) {
+    app.addHook("onClose", async () => telemetry.shutdown());
+  }
 
   const currentOpenApiDocument = () => ({ ...app.swagger(), openapi: OPENAPI_VERSION });
 
@@ -177,7 +208,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     service: "CRIX Credit Risk Intelligence API",
     apiVersion: API_VERSION,
     status: "ok",
-    authentication: config.apiKey ? "api-key" : "public-demo",
+    authentication: config.authMode,
     endpoints: {
       health: "/health",
       readiness: "/ready",
@@ -231,7 +262,12 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       body: applicationSchema,
       response: { 200: scoreResponseSchema, 400: errorSchema, 401: errorSchema, 429: errorSchema },
     },
-  }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, result: assessRisk(request.body) }));
+  }, async (request) => {
+    const startedAt = performance.now();
+    const result = assessRisk(request.body);
+    telemetry.recordScore(result, performance.now() - startedAt);
+    return { requestId: request.id, apiVersion: API_VERSION, result };
+  });
 
   app.post<{ Body: { application: ApplicationInput; severity: StressSeverity } }>(`${API_MAJOR_PATH}/risk/stress`, {
     config: { rateLimit: { max: routeLimit(30), timeWindow: "1 minute" } },
@@ -242,7 +278,12 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       body: stressRequestSchema,
       response: { 200: stressResponseSchema, 400: errorSchema, 401: errorSchema, 429: errorSchema },
     },
-  }, async (request) => ({ requestId: request.id, apiVersion: API_VERSION, ...stressApplication(request.body.application, request.body.severity) }));
+  }, async (request) => {
+    const startedAt = performance.now();
+    const result = stressApplication(request.body.application, request.body.severity);
+    telemetry.recordStress(result.stressed, performance.now() - startedAt);
+    return { requestId: request.id, apiVersion: API_VERSION, ...result };
+  });
 
   app.post<{ Body: { applications: ApplicationInput[] } }>(`${API_MAJOR_PATH}/risk/batch`, {
     config: { rateLimit: { max: routeLimit(10), timeWindow: "1 minute" } },
@@ -254,11 +295,13 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       response: { 200: batchResponseSchema, 400: errorSchema, 401: errorSchema, 429: errorSchema },
     },
   }, async (request) => {
+    const startedAt = performance.now();
     const results = request.body.applications.map((application, index) => ({
       index,
       ...(application.applicationId ? { applicationId: application.applicationId } : {}),
       result: assessRisk(application),
     }));
+    telemetry.recordBatch(results.map((item) => item.result), results.length, performance.now() - startedAt);
     const counts = results.reduce((acc, item) => {
       acc[item.result.decision] += 1;
       return acc;
@@ -293,6 +336,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
     }
 
     if (requestError.statusCode === 429) {
+      telemetry.recordRateLimitRejection(request.routeOptions.url ?? "unmatched");
       return reply.code(429).send({ error: "RATE_LIMITED", message: "Too many requests.", requestId: request.id });
     }
 
