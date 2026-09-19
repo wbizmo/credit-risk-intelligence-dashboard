@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import { summarizeDurations } from "./benchmark-utils";
 import {
   assessRisk,
+  assessRiskReferenceForTest,
   assessRiskWithComplexity,
   benchmarkBaseMargin,
   benchmarkChallengerProbability,
@@ -177,6 +178,11 @@ const results: BenchmarkResult[] = [
     debtToIncome: 0.20 + (index % 50) / 100,
     creditScore: 610 + (index % 150),
   }), complexityProbe.complexity),
+  run("reference-full-assessment", 750, 100, (index) => assessRiskReferenceForTest({
+    ...baseline,
+    debtToIncome: 0.20 + (index % 50) / 100,
+    creditScore: 610 + (index % 150),
+  })),
   run("champion-probability-only", 8_000, 1_000, (index) => benchmarkChampionProbability({
     ...baseline,
     debtToIncome: 0.20 + (index % 50) / 100,
