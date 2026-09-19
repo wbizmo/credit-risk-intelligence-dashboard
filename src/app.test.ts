@@ -49,6 +49,12 @@ describe("CRIX HTTP API", () => {
     }))).rejects.toThrow(/at least 24 characters/);
   });
 
+  it("fails app construction when telemetry is enabled without an exporter endpoint", async () => {
+    await expect(buildApp(config(undefined, {
+      telemetryEnabled: true,
+    }))).rejects.toThrow(/no metrics exporter endpoint/);
+  });
+
   it("reports the explicit public-demo posture without inferring it from key presence", async () => {
     const app = await buildApp(config());
     const response = await app.inject({ method: "GET", url: "/" });
