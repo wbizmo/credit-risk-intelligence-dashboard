@@ -6,7 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
-import { loadConfig, type AppConfig } from "./config";
+import { loadConfig, validateRuntimeSecurityConfig, type AppConfig } from "./config";
 import { apiKeyFromHeader, matchApiKey, rateLimitIdentity } from "./security/auth";
 import { createTelemetry, type Telemetry } from "./telemetry";
 import { assessRisk, modelMetadata, stressApplication, verifyModelIntegrity } from "./risk/engine";
@@ -57,6 +57,7 @@ export interface AppBuildOptions {
 }
 
 export async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
+  validateRuntimeSecurityConfig(config);
   const routeRateLimitScale = Math.max(0.01, Math.min(1_000, options.routeRateLimitScale ?? 1));
   const routeLimit = (max: number): number => Math.max(1, Math.floor(max * routeRateLimitScale));
   const telemetry = options.telemetry ?? createTelemetry({
@@ -143,7 +144,15 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
   });
 
   const modelReady = (options.verifyModel ?? verifyModelIntegrity)();
-  telemetry.setReadiness(modelReady, modelMetadata().name);
+  let readinessModel = "unavailable";
+  if (modelReady) {
+    try {
+      readinessModel = modelMetadata().name;
+    } catch {
+      readinessModel = "unavailable";
+    }
+  }
+  telemetry.setReadiness(modelReady, readinessModel);
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
