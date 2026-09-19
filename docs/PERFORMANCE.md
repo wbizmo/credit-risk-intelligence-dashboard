@@ -30,7 +30,7 @@ npm run benchmark:http
 
 The harness starts the real Fastify application on a loopback ephemeral port and uses the committed `fixtures/load/v3` payloads. It covers `/health`, `/api/v3/risk/score`, `/api/v3/risk/stress`, and `/api/v3/risk/batch` at low, medium and high concurrency.
 
-Evidence includes requests/second, p50/p95/p99 latency, status/error/timeout counts, heap/RSS before/after/peak, CPU time, event-loop delay and event-loop utilization. Additional profiles exercise invalid payload validation, the production route-rate-limit behavior, 1/10/50-item batch scaling, and a sustained score run for memory-growth evidence.
+Evidence includes requests/second, p50/p95/p99 latency, status/error/timeout counts, heap/RSS before/after/peak, CPU time, event-loop delay and event-loop utilization. Additional profiles exercise invalid payload validation, the production route-rate-limit behavior, 1/10/25/50-item batch scaling, and a sustained score run for memory-growth evidence.
 
 Throughput scenarios use an internal test-only route-limit multiplier so they measure request processing rather than intentional 429 responses. A separate scenario uses the production multiplier and requires observed 429s. Production configuration and public route limits are unchanged.
 
