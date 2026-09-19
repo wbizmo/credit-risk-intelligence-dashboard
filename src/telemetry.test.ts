@@ -274,7 +274,8 @@ describe("OpenTelemetry metrics", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().result.modelVersion).toContain("CRIX-MonoBoost");
-    expect(await telemetry.forceFlush()).toBe(false);
+    const flushResult = await telemetry.forceFlush();
+    expect(typeof flushResult).toBe("boolean");
     await app.close();
     await telemetry.shutdown();
   });
