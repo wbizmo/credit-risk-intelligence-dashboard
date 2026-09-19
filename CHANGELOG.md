@@ -43,8 +43,8 @@ All notable CRIX releases are documented here.
 
 ### Compatibility
 
-- Package release is 3.2.0 while the API contract remains 3.0.0 under `/api/v3`.
-- OpenAPI/discovery/health/readiness and scored response envelopes now expose package `releaseVersion` separately from API `apiVersion`.
+- Package release is **3.2.0** and the API contract version is now **3.2.0** under the unchanged major namespace `/api/v3`.
+- OpenAPI/discovery/health/readiness and scored response envelopes expose `releaseVersion` and `apiVersion` separately; both are **3.2.0** in this release.
 - CRIX-MonoBoost 2.0.0, CRIX-Policy 3.0, final-loan-resolution PD semantics and existing policy thresholds remain unchanged.
 - Heavy Python/Monte Carlo/EVT/optimisation work remains outside the Fastify request path.
 
