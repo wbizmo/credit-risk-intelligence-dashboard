@@ -16,6 +16,40 @@ EXTERNAL_CONTRACT_VERSIONS = {
     "uci-statlog-german-credit": "uci-statlog-german-v1",
     "uci-south-german-credit": "uci-south-german-v1",
 }
+EXTERNAL_CONTRACTS = {
+    "uci-taiwan-credit-card-default": {
+        "product": "revolving-credit-card",
+        "target": "default-payment-next-month",
+        "requiredSourceFeatures": (
+            "creditUtilization6mMean",
+            "onTimePaymentRate6m",
+            "paymentDelayMonths6m",
+            "recentCreditGrowth6m",
+        ),
+    },
+    "uci-statlog-german-credit": {
+        "product": "consumer-instalment-credit",
+        "target": "bad-credit-risk",
+        "requiredSourceFeatures": (
+            "Attribute2",
+            "Attribute5",
+            "Attribute7",
+            "Attribute8",
+            "Attribute16",
+        ),
+    },
+    "uci-south-german-credit": {
+        "product": "consumer-instalment-credit",
+        "target": "bad-credit-risk",
+        "requiredSourceFeatures": (
+            "duration",
+            "amount",
+            "employment_duration",
+            "installment_rate",
+            "number_credits",
+        ),
+    },
+}
 
 _SOURCE_COLUMNS = (
     "issue_d",
@@ -319,11 +353,24 @@ def validate_external_dataset(
     dataset_id: str,
     features: pd.DataFrame,
     target: np.ndarray,
+    *,
+    source_features: Sequence[str] | None = None,
 ) -> dict[str, object]:
     if dataset_id not in EXTERNAL_CONTRACT_VERSIONS:
         raise ValueError(f"unsupported external data contract: {dataset_id}")
     version = EXTERNAL_CONTRACT_VERSIONS[dataset_id]
     contract = f"external-{dataset_id}"
+    specification = EXTERNAL_CONTRACTS[dataset_id]
+    observed_source = tuple(str(value) for value in (source_features or features.columns))
+    expected_source = tuple(str(value) for value in specification["requiredSourceFeatures"])
+    if observed_source != expected_source:
+        raise ContractViolation(
+            contract=contract,
+            version=version,
+            invariant="product-specific-source-feature-contract",
+            invalid_count=len(set(observed_source).symmetric_difference(expected_source)) or 1,
+            summary={"expectedFeatureCount": len(expected_source), "actualFeatureCount": len(observed_source)},
+        )
     y = np.asarray(target).reshape(-1)
     if len(features) != len(y) or len(y) == 0:
         raise ContractViolation(
@@ -363,4 +410,8 @@ def validate_external_dataset(
             summary={"expectedRows": expected_rows, "actualRows": len(y)},
         )
 
-    return ContractEvidence(contract, version, len(features), features.shape[1]).to_dict()
+    evidence = ContractEvidence(contract, version, len(features), features.shape[1]).to_dict()
+    evidence["product"] = specification["product"]
+    evidence["target"] = specification["target"]
+    evidence["sourceFeatureCount"] = len(expected_source)
+    return evidence
