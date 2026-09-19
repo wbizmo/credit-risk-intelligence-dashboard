@@ -123,6 +123,31 @@ class TailAttributionOptimizationTests(unittest.TestCase):
                             atol=1e-10,
                         )
 
+    def test_tail_contributions_remain_chunk_size_invariant(self) -> None:
+        pd = np.linspace(0.015, 0.17, 30)
+        lgd = np.linspace(0.25, 0.70, 30)
+        ead = np.linspace(750, 6000, 30)
+        kwargs = dict(
+            rho=0.23,
+            scenarios=12000,
+            seed=404,
+            quantiles=(0.90, 0.95, 0.99),
+            tail_contributions=True,
+        )
+        small = simulate_portfolio(pd, lgd, ead, chunk_size=97, **kwargs)
+        large = simulate_portfolio(pd, lgd, ead, chunk_size=4096, **kwargs)
+        self.assertEqual(small["lossDigest"], large["lossDigest"])
+        self.assertEqual(small["expectedLoss"], large["expectedLoss"])
+        self.assertEqual(small["var"], large["var"])
+        self.assertEqual(small["expectedShortfall"], large["expectedShortfall"])
+        for key in small["tailContributions"]:
+            np.testing.assert_allclose(
+                small["tailContributions"][key],
+                large["tailContributions"][key],
+                rtol=0,
+                atol=1e-10,
+            )
+
     def test_tail_replay_handles_unsupported_zero_loss_and_concentrated_portfolios(self) -> None:
         zero_mix = simulate_portfolio(
             [0.03, 0.08, 0.15, 0.20],
