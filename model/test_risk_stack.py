@@ -10,7 +10,13 @@ import numpy as np
 from ead import amortizing_balance, ccf_proxy, observed_installment_ead
 from lgd import economic_lgd
 from registry import canonical_json_hash, sha256_file, update_registry_index, verify_manifest
-from survival import cumulative_from_hazards, expand_person_period, validate_term_structure
+from survival import (
+    _age_basis,
+    _hazard_logits,
+    cumulative_from_hazards,
+    expand_person_period,
+    validate_term_structure,
+)
 from time_machine import SnapshotSpec, backward_asof_join, build_snapshot_masks, snapshot_id
 from transitions import DEFAULT_STATES, map_repayment_status, propagate_distribution, transition_counts, transition_matrix
 
@@ -56,6 +62,17 @@ class TimeMachineTests(unittest.TestCase):
         joined = backward_asof_join(left, right, values)
         np.testing.assert_allclose(joined[:2], [10.0, 20.0])
         self.assertEqual(joined[2], 20.0)
+
+    def test_snapshot_checksum_must_be_lowercase_sha256_hex(self) -> None:
+        invalid = SnapshotSpec(
+            train_end="2015-12-31",
+            calibration_end="2016-12-31",
+            decision_end="2017-12-31",
+            outcome_cutoff="2020-12-31",
+            source_sha256="z" * 64,
+        )
+        with self.assertRaisesRegex(ValueError, "lowercase SHA-256"):
+            invalid.validate()
 
     def test_snapshot_id_is_deterministic_and_contract_sensitive(self) -> None:
         spec = SnapshotSpec(
@@ -105,6 +122,28 @@ class SurvivalTests(unittest.TestCase):
         np.testing.assert_array_equal(expanded["month"], [1, 2, 1, 2, 3])
         np.testing.assert_array_equal(expanded["event"], [0, 1, 0, 0, 0])
         self.assertEqual(expanded["features"].shape, (5, 2))
+
+    def test_separable_hazard_logits_match_expanded_design_reference(self) -> None:
+        model = {
+            "featureNames": ["x1", "x2"],
+            "means": [1.0, 2.0],
+            "scales": [2.0, 4.0],
+            "ageBucketEnds": [2, 4],
+            "maxHorizonMonths": 4,
+            "intercept": -1.5,
+            "coefficients": [0.3, -0.4, 0.2, 0.7],
+        }
+        features = np.array([[1.0, 2.0], [3.0, 6.0]])
+        actual = _hazard_logits(model, features, 4)
+
+        standardized = (features - np.array(model["means"])) / np.array(model["scales"])
+        repeated = np.repeat(standardized, 4, axis=0)
+        months = np.tile(np.arange(1, 5), len(features))
+        design = np.column_stack([repeated, _age_basis(months, model["ageBucketEnds"])])
+        expected = (
+            model["intercept"] + design @ np.asarray(model["coefficients"], dtype=float)
+        ).reshape(len(features), 4)
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-12)
 
     def test_term_structure_validation_rejects_non_monotone_cumulative_pd(self) -> None:
         with self.assertRaisesRegex(ValueError, "non-decreasing"):
