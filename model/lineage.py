@@ -227,6 +227,36 @@ def validate_manifest_schema(manifest: Mapping[str, Any]) -> None:
         raise LineageViolation("lineage seeds must be a non-empty integer mapping")
 
 
+def _verify_previous_manifest_chain(
+    manifest: Mapping[str, Any],
+    *,
+    root: Path,
+    seen: set[Path],
+) -> int:
+    depth = 0
+    current = manifest
+    while current.get("previousManifest") is not None:
+        previous = current["previousManifest"]
+        if not isinstance(previous, dict):
+            raise LineageViolation("previousManifest must be null or an object")
+        previous_path = (root / _validate_relative_text(previous.get("path"), "previousManifest.path")).resolve()
+        if previous_path in seen:
+            raise LineageViolation("lineage manifest chain contains a cycle")
+        seen.add(previous_path)
+        if not previous_path.is_file() or sha256_file(previous_path) != _validate_sha256(previous.get("sha256"), "previousManifest.sha256"):
+            raise LineageViolation("previous manifest hash-chain verification failed")
+        try:
+            previous_manifest = json.loads(previous_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise LineageViolation("unable to load previous lineage manifest") from exc
+        if not isinstance(previous_manifest, dict):
+            raise LineageViolation("previous lineage manifest root must be an object")
+        validate_manifest_schema(previous_manifest)
+        current = previous_manifest
+        depth += 1
+    return depth
+
+
 def verify_training_manifest(
     manifest_path: Path,
     *,
@@ -267,10 +297,11 @@ def verify_training_manifest(
             raise LineageViolation(f"evidence hash verification failed for {entry['path']}")
 
     previous = manifest["previousManifest"]
-    if previous is not None:
-        previous_path = root / str(previous["path"])
-        if not previous_path.is_file() or sha256_file(previous_path) != previous["sha256"]:
-            raise LineageViolation("previous manifest hash-chain verification failed")
+    chain_depth = _verify_previous_manifest_chain(
+        manifest,
+        root=root,
+        seen={manifest_path.resolve()},
+    )
 
     if dataset_path is not None and dataset_path.exists():
         if sha256_file(dataset_path) != manifest["dataset"]["sourceSha256"]:
@@ -289,6 +320,7 @@ def verify_training_manifest(
         "dataContractVersion": manifest["dataContractVersion"],
         "evidenceFiles": len(manifest["evidence"]),
         "previousManifestLinked": previous is not None,
+        "manifestChainDepth": chain_depth,
         "privacy": "safe aggregate verification output only",
     }
 
