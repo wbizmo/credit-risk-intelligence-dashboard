@@ -21,7 +21,7 @@ These are CI/loopback engineering measurements, not Render cold-start, internet 
 - Gaussian and Student-t dependence with homogeneous one-factor or bounded explicit low-rank factor loadings.
 - Single-replay tail attribution with disjoint indexed buckets and bounded memory.
 - POT/GPD EVT tail extrapolation kept explicitly separate from empirical Monte Carlo VaR/ES.
-- Pre-final indexed-bucket benchmark evidence showed **~2.80x** reference speedup at three quantiles and **~4.63x** at five quantiles.
+- Final indexed-bucket benchmark evidence showed **~0.80x** reference speed at one quantile, **~2.42x** speedup at three quantiles and **~4.03x** at five quantiles.
 - Final audit removes the earlier per-quantile mask scan and hoists invariant backend threshold/loading setup out of the chunk loop.
 - Optional CuPy remains research-only and lazy. **No GPU speedup/crossover number is published** because the connected release infrastructure has no CUDA device; NumPy remains the canonical evidence path.
 
