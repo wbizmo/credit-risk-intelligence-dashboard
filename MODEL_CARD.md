@@ -165,7 +165,7 @@ CRIX v3.2 adds **offline explanation-fidelity validation** in `model/explanation
 
 SHAP remains outside the Fastify request path, so this validation adds no live latency or Python dependency. The generated `model/artifacts/crix-explanation-validation-v1.json` is aggregate-only and version-bound to CRIX-MonoBoost 2.0.0; report generation fails if champion identity metadata does not match.
 
-On the governed v3.2 OOT sample (**n=512**, fixed seed 42), the offline comparison measured mean top-3 feature overlap **0.9759**, top-3 disagreement rate **7.23%**, mean absolute-rank correlation **0.9141**, mean sign agreement **0.9533**, and mean perturbation top-3 stability **0.9876**. These values support broad consistency between the two explanation methods on this sample while leaving the semantic/legal boundaries below unchanged.
+On the governed v3.2 OOT sample (**n=512**, fixed seed 42), the offline comparison measured mean top-3 feature overlap **0.9759**, top-3 disagreement rate **7.23%**, mean absolute-rank correlation **0.9141**, mean sign agreement **0.9533**, and mean perturbation top-3 stability **0.9694**. These values support broad consistency between the two explanation methods on this sample while leaving the semantic/legal boundaries below unchanged.
 
 SHAP values are **model-explanation evidence only**. They are not automatically legal adverse-action reasons, do not replace deterministic `policyReasons`, and do not establish ECOA/fair-lending compliance. Counterfactuals remain model-analysis aids, not promises of approval and not legally sufficient adverse-action reasons.
 
