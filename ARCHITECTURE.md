@@ -140,16 +140,16 @@ This avoids training one blurred default concept across personal loans, cards, H
 3. In hardened mode, bounded constant-time API-key authentication runs for `/api/v3/*`; public-demo mode remains explicitly unauthenticated.
 4. Key-aware rate limits and a supplementary trusted-client-IP quota constrain abuse without emitting credential/IP labels.
 5. AJV validates the strict v3 request body, including `creditScore`.
-5. The engine performs finite-number checks as a second trust boundary.
-6. One request-local scoring context derives loan-to-income and the champion feature vector once.
-7. The monotonic boosted champion produces a raw margin from that context.
-8. Real-data calibration converts the margin to final-resolution default probability.
-9. The exported logistic challenger scores the same trained feature vector.
-10. Disagreement and real-training-support OOD checks reduce confidence and emit flags.
-11. LGD, EAD, expected loss, CRIX score, grade and pricing are derived.
-12. The four champion features are perturbed once against bounded training-reference values; the same evaluations feed model reason codes and lower-risk counterfactuals.
-13. Independent policy evaluation returns approve/review/decline plus separate policy reasons.
-14. The response includes API, model, policy and PD-horizon information for traceability.
+6. The engine performs finite-number checks as a second trust boundary.
+7. One request-local scoring context derives loan-to-income and the champion feature vector once.
+8. The monotonic boosted champion produces a raw margin from that context.
+9. Real-data calibration converts the margin to final-resolution default probability.
+10. The exported logistic challenger scores the same trained feature vector.
+11. Disagreement and real-training-support OOD checks reduce confidence and emit flags.
+12. LGD, EAD, expected loss, CRIX score, grade and pricing are derived.
+13. The four champion features are perturbed once against bounded training-reference values; the same evaluations feed model reason codes and lower-risk counterfactuals.
+14. Independent policy evaluation returns approve/review/decline plus separate policy reasons.
+15. The response includes API, model, policy and PD-horizon information for traceability.
 
 The base feature map/vector is not repeatedly reconstructed for champion, challenger and OOD evaluation. Counterfactual rescoring remains intentionally bounded to the small trained champion feature set.
 
