@@ -26,6 +26,8 @@ jobs:
       - name: Capture risk-engine hot-path benchmark evidence
         run: npm run benchmark:risk
       - name: Capture quick HTTP load and event-loop evidence
+        env:
+          CRIX_BENCH_API_KEY: "ci-benchmark-${{ github.run_id }}"
         run: npm run benchmark:http:quick
 
   governance:
