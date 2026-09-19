@@ -16,7 +16,7 @@ All notable CRIX releases are documented here.
 
 - Added Student-t dependence and bounded low-rank multi-factor dependence alongside the canonical one-factor Gaussian simulator.
 - Added single-replay tail attribution and research-only POT/GPD EVT tail extrapolation with explicit unstable/insufficient states and finite-mean expected-shortfall rules.
-- Shared tail replay measured ~2.80x reference speedup at three quantiles and ~4.63x at five quantiles before the final indexed-bucket optimization.
+- Final indexed-bucket tail replay measured ~0.80x reference speed at one quantile, ~2.42x speedup at three quantiles and ~4.03x at five quantiles, demonstrating the intended Q-scaling crossover rather than claiming a universal win.
 - Final audit removed the hidden per-quantile mask scan and moved invariant backend thresholds/loadings outside the simulation chunk loop.
 - Added an optional lazy CuPy backend while retaining NumPy as the canonical deterministic path. No GPU speedup/crossover claim is made in v3.2.0 because connected release infrastructure has no CUDA device.
 
