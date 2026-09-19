@@ -28,6 +28,10 @@ import {
 
 const OPENAPI_VERSION = "3.0.3";
 const SWAGGER_UI_PREFIX = "/docs/ui";
+export const LOGGER_REDACT_PATHS = Object.freeze([
+  "req.headers.authorization",
+  "req.headers.x-api-key",
+]);
 
 const protectedRoute = (request: FastifyRequest) => request.url === API_MAJOR_PATH || request.url.startsWith(`${API_MAJOR_PATH}/`);
 
@@ -74,7 +78,7 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
   const app = Fastify({
     logger: config.environment === "test" ? false : {
       level: config.logLevel,
-      redact: ["req.headers.authorization", "req.headers.x-api-key"],
+      redact: [...LOGGER_REDACT_PATHS],
     },
     genReqId: () => randomUUID(),
     trustProxy: config.trustProxyHops > 0
