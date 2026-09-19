@@ -263,6 +263,13 @@ class BackendAndDependencyTests(unittest.TestCase):
                 [100, 100],
                 dependency_model={"name": "gaussian", "loadings": [[0.1, 0.2]]},
             )
+        with self.assertRaisesRegex(ValueError, "either rho or loadings"):
+            simulate_portfolio(
+                [0.1],
+                [0.5],
+                [100],
+                dependency_model={"name": "gaussian", "rho": 0.1, "loadings": [[0.2]]},
+            )
         with self.assertRaisesRegex(ValueError, "squared factor loadings"):
             simulate_portfolio(
                 [0.1],
@@ -272,6 +279,14 @@ class BackendAndDependencyTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "unsupported dependency"):
             simulate_portfolio([0.1], [0.5], [100], dependency_model={"name": "dense-correlation"})
+        with self.assertRaisesRegex(ValueError, "at most"):
+            simulate_portfolio(
+                [0.1],
+                [0.5],
+                [100],
+                scenarios=1000,
+                quantiles=tuple(np.linspace(0.01, 0.99, 129)),
+            )
 
     def test_marginals_and_expected_loss_remain_anchored_across_dependency_choices(self) -> None:
         n = 80

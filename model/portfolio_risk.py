@@ -11,6 +11,7 @@ import numpy as np
 RESEARCH_STATUS = "research-only; not regulatory capital or bank validation"
 _MAX_SCENARIOS = 2_000_000
 _MAX_FACTORS = 32
+_MAX_QUANTILES = 128
 _LOADING_TOLERANCE = 1e-12
 
 
@@ -173,6 +174,8 @@ def _validate_quantiles(quantiles: Iterable[float]) -> tuple[float, ...]:
         raise ValueError("quantiles must be finite probabilities strictly between 0 and 1")
     if len(set(result)) != len(result):
         raise ValueError("quantiles must be unique")
+    if len(result) > _MAX_QUANTILES:
+        raise ValueError(f"quantiles must contain at most {_MAX_QUANTILES} values")
     return result
 
 
@@ -207,6 +210,8 @@ def _resolve_dependency(
             raise ValueError("Student-t degrees_of_freedom must be finite and greater than 2")
 
     if "loadings" in config:
+        if "rho" in config:
+            raise ValueError("dependency_model must specify either rho or loadings, not both")
         loadings = np.asarray(config["loadings"], dtype=float)
         if loadings.ndim != 2 or loadings.shape[0] != obligor_count or loadings.shape[1] == 0:
             raise ValueError("loadings must have shape (obligors, factors)")

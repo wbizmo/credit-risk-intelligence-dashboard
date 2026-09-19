@@ -132,6 +132,8 @@ def _gpu_case(n: int, scenarios: int, seed: int) -> dict:
         )
     )
 
+    cpu_measurement["scenariosPerSecond"] = scenarios / cpu_measurement["wallSeconds"]
+
     try:
         cupy_backend = _resolve_backend("cupy")
     except RuntimeError as exc:
@@ -166,7 +168,9 @@ def _gpu_case(n: int, scenarios: int, seed: int) -> dict:
         )
     )
     cp.cuda.Stream.null.synchronize()
+    gpu_measurement["scenariosPerSecond"] = scenarios / gpu_measurement["wallSeconds"]
     gpu_after = int(pool.used_bytes())
+    gpu_pool_total = int(pool.total_bytes())
     speedup = cpu_measurement["wallSeconds"] / gpu_measurement["wallSeconds"]
     return {
         "portfolioSize": n,
@@ -178,6 +182,7 @@ def _gpu_case(n: int, scenarios: int, seed: int) -> dict:
             "device": cupy_backend.device,
             "memoryUsedBeforeBytes": gpu_before,
             "memoryUsedAfterBytes": gpu_after,
+            "memoryPoolTotalBytesAfter": gpu_pool_total,
             "hostTransferProbeSeconds": transfer_seconds,
         },
         "speedup": speedup,
