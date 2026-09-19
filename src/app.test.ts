@@ -66,7 +66,10 @@ describe("CRIX HTTP API", () => {
     const app = await buildApp(config());
     const response = await app.inject({ method: "GET", url: "/" });
     expect(response.statusCode).toBe(200);
-    expect(response.json().authentication).toBe("public-demo");
+    const body = response.json();
+    expect(body.authentication).toBe("public-demo");
+    expect(body.apiVersion).toBe("3.0.0");
+    expect(body.releaseVersion).toBe("3.2.0");
     await app.close();
   });
 
@@ -75,9 +78,17 @@ describe("CRIX HTTP API", () => {
     const health = await app.inject({ method: "GET", url: "/health" });
     const ready = await app.inject({ method: "GET", url: "/ready" });
     expect(health.statusCode).toBe(200);
-    expect(health.json().status).toBe("ok");
+    expect(health.json()).toMatchObject({
+      status: "ok",
+      version: "3.0.0",
+      releaseVersion: "3.2.0",
+    });
     expect(ready.statusCode).toBe(200);
-    expect(ready.json().status).toBe("ready");
+    expect(ready.json()).toMatchObject({
+      status: "ready",
+      version: "3.0.0",
+      releaseVersion: "3.2.0",
+    });
     await app.close();
   });
 
@@ -85,7 +96,12 @@ describe("CRIX HTTP API", () => {
     const app = await buildApp(config(), { verifyModel: () => false });
     const ready = await app.inject({ method: "GET", url: "/ready" });
     expect(ready.statusCode).toBe(503);
-    expect(ready.json()).toMatchObject({ status: "not-ready", modelLoaded: false });
+    expect(ready.json()).toMatchObject({
+      status: "not-ready",
+      modelLoaded: false,
+      version: "3.0.0",
+      releaseVersion: "3.2.0",
+    });
     await app.close();
   });
 
@@ -97,7 +113,7 @@ describe("CRIX HTTP API", () => {
     expect(publicSpecResponse.headers["cache-control"]).toContain("no-store");
     const publicSpec = publicSpecResponse.json();
     expect(publicSpec.openapi).toBe("3.0.3");
-    expect(publicSpec.info.version).toBe("3.0.0");
+    expect(publicSpec.info.version).toBe("3.2.0");
     expect(publicSpec.paths["/api/v3/risk/score"]).toBeTruthy();
     expect(publicSpec.paths["/api/v3/risk/stress"]).toBeTruthy();
     expect(publicSpec.paths["/api/v3/risk/batch"]).toBeTruthy();
@@ -123,7 +139,7 @@ describe("CRIX HTTP API", () => {
     expect(swaggerSpecResponse.headers["cache-control"]).toContain("no-store");
     const swaggerSpec = swaggerSpecResponse.json();
     expect(swaggerSpec.openapi).toBe("3.0.3");
-    expect(swaggerSpec.info.version).toBe("3.0.0");
+    expect(swaggerSpec.info.version).toBe("3.2.0");
     expect(swaggerSpec.paths["/api/v3/risk/score"]).toBeTruthy();
     await app.close();
   });
@@ -134,6 +150,7 @@ describe("CRIX HTTP API", () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.apiVersion).toBe("3.0.0");
+    expect(body.releaseVersion).toBe("3.2.0");
     expect(body.requestId).toBeTruthy();
     expect(body.result.pd).toBeGreaterThan(0);
     expect(body.result.pdHorizon).toContain("final-loan-resolution");
