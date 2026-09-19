@@ -53,7 +53,12 @@ interface RequestErrorShape {
   message?: string;
 }
 
-export interface AppBuildOptions {\n  verifyModel?: () => boolean;\n}\n\nexport async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
+export interface AppBuildOptions {
+  verifyModel?: () => boolean;
+  routeRateLimitScale?: number;
+}
+
+export async function buildApp(config: AppConfig = loadConfig(), options: AppBuildOptions = {}) {
   const routeRateLimitScale = Math.max(1, Math.min(1_000, Math.floor(options.routeRateLimitScale ?? 1)));
   const routeLimit = (max: number): number => max * routeRateLimitScale;
 
