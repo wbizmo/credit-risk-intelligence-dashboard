@@ -114,27 +114,15 @@ jobs:
           }, sort_keys=True))
           PY
           cp /tmp/crix-monoboost-v2.committed.json model/artifacts/crix-monoboost-v2.json
-      - name: Generate reviewed lineage candidate (temporary PR evidence)
+      - name: Verify committed training lineage read-only
         run: |
-          TRAINING_COMMIT="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          print(json.loads(Path("model/artifacts/crix-monoboost-v2.manifest.json").read_text())["gitCommit"])
-          PY
-          )"
-          python model/lineage.py generate \
+          python model/lineage.py verify \
+            model/lineage/crix-monoboost-v2.training-run.json \
             --root . \
-            --runtime-manifest model/artifacts/crix-monoboost-v2.manifest.json \
-            --artifact model/artifacts/crix-monoboost-v2.json \
-            --dependency-lock model/requirements.txt \
             --dataset model/data/LC_loans_granting_model_dataset.csv \
-            --evidence MODEL_CARD.md model/TRAINING_REPORT.md \
-            --run-id crix-v3.2-lineage-initial \
-            --git-commit "$TRAINING_COMMIT" \
-            --data-contract-version crix-lendingclub-harmonized-v1 \
-            --created-at 2026-09-19T00:00:00+00:00 \
-            --output /tmp/crix-training-lineage-v1.json
-          cat /tmp/crix-training-lineage-v1.json
+            --expected-git-commit 007e8f2be0fb51c2487fb13db35c642a20f1ded7 \
+            --expected-data-contract-version crix-lendingclub-harmonized-v1
+          git diff --exit-code -- model/lineage
       - name: Publish deployed champion manifest and registry index
         run: python model/publish_champion_manifest.py
       - name: Validate point-in-time research risk stack without rebinding immutable versions
@@ -266,6 +254,7 @@ jobs:
             model/artifacts/crix-advanced-risk-v1.json
             model/artifacts/crix-distribution-shift-v1.json
             model/artifacts/crix-explanation-validation-v1.json
+            model/lineage/crix-monoboost-v2.training-run.json
             model/artifacts/snapshot-*.json
             model/public_data/UNRATE_2006_2014.csv
             model/TRAINING_REPORT.md
