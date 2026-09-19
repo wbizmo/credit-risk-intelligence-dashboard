@@ -114,6 +114,26 @@ jobs:
           echo "Python model/research advisories are evidence for explicit reachability/environment triage."
           echo "They do not silently retrain/promote the champion and are not treated as live Fastify exposure by default."
           echo "pip-audit outcome: ${{ steps.python-audit.outcome }}"
+          if [ -s pip-audit.json ]; then
+            python - <<'PY'
+            import json
+            from pathlib import Path
+            data = json.loads(Path("pip-audit.json").read_text())
+            findings = []
+            for dependency in data.get("dependencies", []):
+                vulnerabilities = dependency.get("vulns", [])
+                if vulnerabilities:
+                    findings.append({
+                        "name": dependency.get("name"),
+                        "version": dependency.get("version"),
+                        "advisories": [
+                            {"id": item.get("id"), "fixVersions": item.get("fix_versions", [])}
+                            for item in vulnerabilities
+                        ],
+                    })
+            print(json.dumps({"researchDependencyFindings": findings}, sort_keys=True))
+            PY
+          fi
       - name: Upload Python audit evidence
         if: always()
         uses: actions/upload-artifact@v4
