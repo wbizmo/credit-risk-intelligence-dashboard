@@ -155,6 +155,7 @@ describe("CRIX risk engine", () => {
 
       expect(compiled.pd).toBeCloseTo(reference.pd, 14);
       expect(compiled.challengerPd).toBeCloseTo(reference.challengerPd, 14);
+      expect(compiled.confidence).toBeCloseTo(reference.confidence, 14);
       expect(compiled.grade).toBe(reference.grade);
       expect(compiled.score).toBe(reference.score);
       expect(compiled.decision).toBe(reference.decision);
@@ -172,6 +173,21 @@ describe("CRIX risk engine", () => {
           .toBeCloseTo(reference.counterfactuals[counterfactualIndex]!.pdAfter, 12);
       }
     }
+  });
+
+  it("preserves loan-to-income counterfactual semantics through loanAmount perturbation", () => {
+    const input: ApplicationInput = { ...baseline, loanAmount: 50_000 };
+    const originalLoanAmount = input.loanAmount;
+    const compiled = assessRisk(input);
+    const reference = assessRiskReferenceForTest(input);
+    const compiledLoanToIncome = compiled.counterfactuals.find((item) => item.feature === "loanToIncome");
+    const referenceLoanToIncome = reference.counterfactuals.find((item) => item.feature === "loanToIncome");
+
+    expect(compiledLoanToIncome).toBeDefined();
+    expect(referenceLoanToIncome).toBeDefined();
+    expect(compiledLoanToIncome?.to).toBeCloseTo(referenceLoanToIncome!.to, 14);
+    expect(compiledLoanToIncome?.pdAfter).toBeCloseTo(referenceLoanToIncome!.pdAfter, 12);
+    expect(input.loanAmount).toBe(originalLoanAmount);
   });
 
   it("uses tree-sparse explanation traversal for the deployed model", () => {
