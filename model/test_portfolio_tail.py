@@ -19,6 +19,17 @@ from portfolio_risk import (
 )
 
 
+def _gpu_available() -> bool:
+    try:
+        import cupy as cp  # type: ignore
+        return int(cp.cuda.runtime.getDeviceCount()) > 0
+    except Exception:
+        return False
+
+
+_GPU_AVAILABLE = _gpu_available()
+
+
 def _reference_contributions(
     pd,
     lgd,
@@ -158,6 +169,29 @@ class BackendAndDependencyTests(unittest.TestCase):
         with patch.dict(sys.modules, {"cupy": None}):
             with self.assertRaisesRegex(RuntimeError, "CuPy|CUDA"):
                 simulate_portfolio([0.05], [0.5], [1000], scenarios=1000, backend="cupy")
+
+    @unittest.skipUnless(_GPU_AVAILABLE, "optional CuPy/CUDA research test")
+    def test_cupy_is_repeatable_and_statistically_agrees_with_numpy(self) -> None:
+        pd = np.linspace(0.02, 0.15, 30)
+        lgd = np.linspace(0.30, 0.65, 30)
+        ead = np.linspace(500, 5000, 30)
+        kwargs = dict(rho=0.2, scenarios=12000, seed=211, chunk_size=512, quantiles=(0.95, 0.99))
+        first = simulate_portfolio(pd, lgd, ead, backend="cupy", **kwargs)
+        second = simulate_portfolio(pd, lgd, ead, backend="cupy", **kwargs)
+        cpu = simulate_portfolio(pd, lgd, ead, backend="numpy", **kwargs)
+
+        self.assertEqual(first["lossDigest"], second["lossDigest"])
+        self.assertEqual(first["expectedLoss"], second["expectedLoss"])
+        self.assertEqual(first["backend"]["name"], "cupy")
+        self.assertNotEqual(first["backend"]["device"], "cpu")
+        self.assertLess(
+            abs(first["expectedLoss"] - cpu["expectedLoss"]),
+            max(1.0, 6 * cpu["monteCarlo"]["expectedLossStdError"]),
+        )
+        self.assertLess(
+            abs(first["var"]["0.99"] - cpu["var"]["0.99"]),
+            max(1.0, 0.15 * cpu["var"]["0.99"]),
+        )
 
     def test_explicit_gaussian_dependency_is_backward_compatible(self) -> None:
         pd = np.linspace(0.02, 0.16, 20)
