@@ -229,117 +229,108 @@ const endpointDefinitions = [
 ] as const;
 
 async function main(): Promise<void> {
-  async function main(): Promise<void> {
   const results: ScenarioResult[] = [];
-  
-    for (const endpoint of endpointDefinitions) {
-      for (const profile of profiles) {
-        results.push(await runScenario({
-          name: `${endpoint.name}-${profile.label}`,
-          method: endpoint.method,
-          path: endpoint.path,
-          concurrency: profile.concurrency,
-          requests: endpoint.requests,
-          expectedStatuses: [200],
-          ...(endpoint.body !== undefined ? { body: endpoint.body } : {}),
-        }));
-      }
-    }
-  
-    for (const size of [1, 10, 25, 50]) {
+
+  for (const endpoint of endpointDefinitions) {
+    for (const profile of profiles) {
       results.push(await runScenario({
-        name: `batch-size-${size}`,
-        method: "POST",
-        path: "/api/v3/risk/batch",
-        concurrency: quick ? 4 : 8,
-        requests: quick ? 20 : 80,
+        name: `${endpoint.name}-${profile.label}`,
+        method: endpoint.method,
+        path: endpoint.path,
+        concurrency: profile.concurrency,
+        requests: endpoint.requests,
         expectedStatuses: [200],
-        body: batchPayload(size),
+        ...(endpoint.body !== undefined ? { body: endpoint.body } : {}),
       }));
     }
-  
-    results.push(await runScenario({
-      name: "invalid-payload-bounded-validation",
-      method: "POST",
-      path: "/api/v3/risk/score",
-      concurrency: 16,
-      requests: quick ? 40 : 200,
-      expectedStatuses: [400],
-      body: invalidScore,
-    }));
-  
-    results.push(await runScenario({
-      name: "production-rate-limit-behavior",
-      method: "POST",
-      path: "/api/v3/risk/score",
-      concurrency: 32,
-      requests: 80,
-      expectedStatuses: [200, 429],
-      requireStatus: 429,
-      routeRateLimitScale: 1,
-      body: score,
-    }));
-  
-    results.push(await runScenario({
-      name: "sustained-score-memory-profile",
-      method: "POST",
-      path: "/api/v3/risk/score",
-      concurrency: 16,
-      requests: quick ? 500 : 5_000,
-      expectedStatuses: [200],
-      body: score,
-    }));
-  
-    const benchmarkApiKey = process.env.CRIX_BENCH_API_KEY?.trim();
-    let authenticatedProfile: { status: "executed"; result: ScenarioResult } | { status: "skipped"; reason: string };
-  
-    if (benchmarkApiKey) {
-      authenticatedProfile = {
-        status: "executed",
-        result: await runScenario({
-          name: "authenticated-score",
-          method: "POST",
-          path: "/api/v3/risk/score",
-          concurrency: 8,
-          requests: quick ? 40 : 200,
-          expectedStatuses: [200],
-          body: score,
-          apiKey: benchmarkApiKey,
-        }),
-      };
-    } else {
-      authenticatedProfile = {
-        status: "skipped",
-        reason: "Set CRIX_BENCH_API_KEY locally/CI to exercise the authenticated load profile; no credential is committed.",
-      };
-    }
-  
-    console.log(JSON.stringify({
-      node: process.version,
-      mode: quick ? "quick" : "full",
-      fixtureVersion: "v3",
-      environment: "local-loopback",
-      disclaimer: "Engineering evidence only. These loopback results are not an internet, cloud-provider, cold-start, or end-user latency SLO.",
-      serverSemantics: {
-        synchronousScoring: true,
-        publicBatchMaximum: 50,
-        throughputProfilesUseInternalRateLimitScale: 100,
-        productionRateLimitProfileUsesScale: 1,
-      },
-      results,
-      authenticatedProfile,
-    }, null, 2));
-  
   }
-  
-  void main().catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-  
+
+  for (const size of [1, 10, 25, 50]) {
+    results.push(await runScenario({
+      name: `batch-size-${size}`,
+      method: "POST",
+      path: "/api/v3/risk/batch",
+      concurrency: quick ? 4 : 8,
+      requests: quick ? 20 : 80,
+      expectedStatuses: [200],
+      body: batchPayload(size),
+    }));
+  }
+
+  results.push(await runScenario({
+    name: "invalid-payload-bounded-validation",
+    method: "POST",
+    path: "/api/v3/risk/score",
+    concurrency: 16,
+    requests: quick ? 40 : 200,
+    expectedStatuses: [400],
+    body: invalidScore,
+  }));
+
+  results.push(await runScenario({
+    name: "production-rate-limit-behavior",
+    method: "POST",
+    path: "/api/v3/risk/score",
+    concurrency: 32,
+    requests: 80,
+    expectedStatuses: [200, 429],
+    requireStatus: 429,
+    routeRateLimitScale: 1,
+    body: score,
+  }));
+
+  results.push(await runScenario({
+    name: "sustained-score-memory-profile",
+    method: "POST",
+    path: "/api/v3/risk/score",
+    concurrency: 16,
+    requests: quick ? 500 : 5_000,
+    expectedStatuses: [200],
+    body: score,
+  }));
+
+  const benchmarkApiKey = process.env.CRIX_BENCH_API_KEY?.trim();
+  let authenticatedProfile: { status: "executed"; result: ScenarioResult } | { status: "skipped"; reason: string };
+
+  if (benchmarkApiKey) {
+    authenticatedProfile = {
+      status: "executed",
+      result: await runScenario({
+        name: "authenticated-score",
+        method: "POST",
+        path: "/api/v3/risk/score",
+        concurrency: 8,
+        requests: quick ? 40 : 200,
+        expectedStatuses: [200],
+        body: score,
+        apiKey: benchmarkApiKey,
+      }),
+    };
+  } else {
+    authenticatedProfile = {
+      status: "skipped",
+      reason: "Set CRIX_BENCH_API_KEY locally/CI to exercise the authenticated load profile; no credential is committed.",
+    };
+  }
+
+  console.log(JSON.stringify({
+    node: process.version,
+    mode: quick ? "quick" : "full",
+    fixtureVersion: "v3",
+    environment: "local-loopback",
+    disclaimer: "Engineering evidence only. These loopback results are not an internet, cloud-provider, cold-start, or end-user latency SLO.",
+    serverSemantics: {
+      synchronousScoring: true,
+      publicBatchMaximum: 50,
+      throughputProfilesUseInternalRateLimitScale: 100,
+      productionRateLimitProfileUsesScale: 1,
+    },
+    results,
+    authenticatedProfile,
+  }, null, 2));
 }
 
-void main().catch((error) => {
+void main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });
