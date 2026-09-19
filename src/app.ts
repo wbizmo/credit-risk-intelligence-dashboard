@@ -338,26 +338,35 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       ...(application.applicationId ? { applicationId: application.applicationId } : {}),
       result: assessRisk(application),
     }));
-    const counts = results.reduce((acc, item) => {
-      acc[item.result.decision] += 1;
+    const summaryState = results.reduce((acc, item) => {
+      acc.decisions[item.result.decision] += 1;
+      acc.totalExpectedLoss += item.result.expectedLoss;
+      acc.totalPd += item.result.pd;
       return acc;
-    }, { APPROVE: 0, REVIEW: 0, DECLINE: 0 });
+    }, {
+      decisions: { APPROVE: 0, REVIEW: 0, DECLINE: 0 },
+      totalExpectedLoss: 0,
+      totalPd: 0,
+    });
     const firstResult = results[0]!.result;
     telemetry.recordBatch(
-      counts,
+      summaryState.decisions,
       results.length,
       performance.now() - startedAt,
       firstResult.modelVersion,
       firstResult.policyVersion,
     );
-    const totalExpectedLoss = results.reduce((sum, item) => sum + item.result.expectedLoss, 0);
-    const averagePd = results.reduce((sum, item) => sum + item.result.pd, 0) / results.length;
 
     return {
       requestId: request.id,
       apiVersion: API_VERSION,
       results,
-      summary: { count: results.length, decisions: counts, averagePd, totalExpectedLoss },
+      summary: {
+        count: results.length,
+        decisions: summaryState.decisions,
+        averagePd: summaryState.totalPd / results.length,
+        totalExpectedLoss: summaryState.totalExpectedLoss,
+      },
     };
   });
 
