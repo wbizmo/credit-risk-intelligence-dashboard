@@ -334,11 +334,18 @@ export async function buildApp(config: AppConfig = loadConfig(), options: AppBui
       ...(application.applicationId ? { applicationId: application.applicationId } : {}),
       result: assessRisk(application),
     }));
-    telemetry.recordBatch(results.map((item) => item.result), results.length, performance.now() - startedAt);
     const counts = results.reduce((acc, item) => {
       acc[item.result.decision] += 1;
       return acc;
     }, { APPROVE: 0, REVIEW: 0, DECLINE: 0 });
+    const firstResult = results[0]!.result;
+    telemetry.recordBatch(
+      counts,
+      results.length,
+      performance.now() - startedAt,
+      firstResult.modelVersion,
+      firstResult.policyVersion,
+    );
     const totalExpectedLoss = results.reduce((sum, item) => sum + item.result.expectedLoss, 0);
     const averagePd = results.reduce((sum, item) => sum + item.result.pd, 0) / results.length;
 
